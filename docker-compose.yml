@@ -1,0 +1,25 @@
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: sahiy_docs_db
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+
+  app:
+    build: .
+    container_name: sahiy_docs_app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/sahiy_docs
+      - AUTH_SECRET=sahiy_docs_secret_key_2026
+      - NEXTAUTH_URL=http://localhost:3000
+    depends_on:
+      - mongodb
+
+volumes:
+  mongodb_data:
