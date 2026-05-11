@@ -53,7 +53,7 @@ export default function NewDocForm({ projects, categories }: { projects: any[], 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
-          keywords: keywordsInput.split(",").map(k => k.trim()).filter(k => k),
+          keywords: keywordsInput.split(",").map((k: string) => k.trim()).filter((k: string) => k),
           newCategoryName: isAddingCategory ? newCategoryName : undefined,
           projectId: isAddingCategory ? selectedProjectId : undefined,
         }),
