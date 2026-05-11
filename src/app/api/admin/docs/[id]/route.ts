@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import dbConnect from "@/lib/mongodb";
 import { Document } from "@/models/Document";
 import { Category } from "@/models/Category";
+import { recordLog } from "@/lib/logs";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -56,6 +57,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       updateData,
       { new: true }
     );
+    
+    await recordLog("UPDATE", "DOCUMENT", id, { 
+      title: updatedDoc.title,
+      previousContent: doc.content 
+    });
+
     return NextResponse.json(updatedDoc);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -74,7 +81,14 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const { id } = await params;
     await dbConnect();
     
+    const doc = await Document.findById(id);
     await Document.findByIdAndDelete(id);
+    
+    await recordLog("DELETE", "DOCUMENT", id, { 
+      title: doc?.title,
+      deletedDoc: doc 
+    });
+
     return NextResponse.json({ message: "Document deleted" });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

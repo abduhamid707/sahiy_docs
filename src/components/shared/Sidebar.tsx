@@ -24,6 +24,7 @@ const adminItems = [
   { name: "Loyihalar boshqaruvi", href: "/admin/projects", icon: FolderKanban },
   { name: "Kontent boshqaruvi", href: "/admin/docs", icon: FileText },
   { name: "Foydalanuvchilar", href: "/admin/users", icon: Users },
+  { name: "Tizim jurnali", href: "/admin/logs", icon: FileText },
 ];
 
 import { ROLE_LABELS, UserRole } from "@/lib/constants";
@@ -40,6 +41,7 @@ export default function Sidebar({ user, projects = [], isOpen, onClose }: {
   const canManageDocs = isAdmin || role === "MOBILE" || role === "FRONTEND" || role === "BACKEND";
 
   const filteredAdminItems = adminItems.filter(item => {
+    if (item.href === "/admin/logs") return role === "SUPER_ADMIN";
     if (isAdmin) return true;
     if (canManageDocs && item.href === "/admin/docs") return true;
     return false;

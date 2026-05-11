@@ -1,0 +1,11 @@
+[
+  {
+    "title": "Namuna Hujjat",
+    "content": "# Namuna Sarlavha\n\nBu yerda hujjat matni bo'ladi. Markdown formatida yozishingiz mumkin.",
+    "projectName": "Loyiha Nomi",
+    "categoryName": "Kategoriya Nomi",
+    "keywords": ["namuna", "test"],
+    "status": "DRAFT",
+    "allowedRoles": ["ADMIN", "SUPER_ADMIN"]
+  }
+]

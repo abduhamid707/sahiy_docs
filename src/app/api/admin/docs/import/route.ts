@@ -4,6 +4,7 @@ import dbConnect from "@/lib/mongodb";
 import { Document } from "@/models/Document";
 import { Category } from "@/models/Category";
 import { Project } from "@/models/Project";
+import { recordLog } from "@/lib/logs";
 
 export async function POST(req: Request) {
   try {
@@ -76,6 +77,8 @@ export async function POST(req: Request) {
 
       importedCount++;
     }
+
+    await recordLog("IMPORT", "DOCUMENT", undefined, { count: importedCount });
 
     return NextResponse.json({ 
       message: `Muvaffaqiyatli import qilindi: ${importedCount} ta hujjat`,

@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import dbConnect from "@/lib/mongodb";
 import { Document } from "@/models/Document";
 import { Category } from "@/models/Category";
+import { recordLog } from "@/lib/logs";
 
 export async function POST(req: Request) {
   try {
@@ -47,6 +48,8 @@ export async function POST(req: Request) {
       allowedRoles: finalRoles,
       keywords: keywords || [],
     });
+
+    await recordLog("CREATE", "DOCUMENT", doc._id.toString(), { title: doc.title });
 
     return NextResponse.json(doc, { status: 201 });
   } catch (error: any) {
