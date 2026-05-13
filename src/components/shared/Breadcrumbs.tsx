@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 export default function Breadcrumbs() {
   const pathname = usePathname();
-  const pathSegments = pathname.split("/").filter((segment) => segment !== "");
+  const pathSegments = pathname ? pathname.split("/").filter((segment) => segment !== "") : [];
 
   return (
     <nav className="flex items-center text-sm text-muted-foreground">

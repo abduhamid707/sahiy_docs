@@ -11,12 +11,14 @@ import {
   Users, 
   FolderKanban,
   ChevronRight,
-  X
+  X,
+  MessageSquare
 } from "lucide-react";
 
 const navItems = [
   { name: "Boshqaruv paneli", href: "/", icon: LayoutDashboard },
   { name: "Barcha loyihalar", href: "/projects", icon: FolderKanban },
+  { name: "Sahiy Team", href: "/chat", icon: MessageSquare },
 ];
 
 const adminItems = [
@@ -35,7 +37,7 @@ export default function Sidebar({ user, projects = [], isOpen, onClose }: {
   isOpen?: boolean,
   onClose?: () => void 
 }) {
-  const pathname = usePathname();
+  const pathname = usePathname() || "";
   const role = user?.role as UserRole;
   const isAdmin = role === "SUPER_ADMIN" || role === "ADMIN";
   const canManageDocs = isAdmin || role === "MOBILE" || role === "FRONTEND" || role === "BACKEND";
@@ -114,12 +116,12 @@ export default function Sidebar({ user, projects = [], isOpen, onClose }: {
                   href={`/projects/${project._id}`}
                   className={cn(
                     "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-300 group",
-                    pathname.includes(project._id)
+                    pathname && pathname.includes(project._id)
                       ? "bg-slate-800 text-white border border-slate-700"
                       : "text-slate-400 hover:bg-slate-800/30 hover:text-white"
                   )}
                 >
-                  <FolderKanban className={cn("h-4 w-4 transition-colors", pathname.includes(project._id) ? "text-blue-400" : "text-slate-600")} />
+                  <FolderKanban className={cn("h-4 w-4 transition-colors", (pathname && pathname.includes(project._id)) ? "text-blue-400" : "text-slate-600")} />
                   <span className="truncate">{project.name}</span>
                 </Link>
               ))}
@@ -139,12 +141,12 @@ export default function Sidebar({ user, projects = [], isOpen, onClose }: {
                   href={item.href}
                   className={cn(
                     "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-300 group",
-                    pathname.startsWith(item.href)
+                    pathname && pathname.startsWith(item.href)
                       ? "bg-slate-800/80 text-white border border-slate-700/50 shadow-inner"
                       : "text-slate-400 hover:bg-slate-800/50 hover:text-white"
                   )}
                 >
-                  <item.icon className={cn("h-5 w-5 transition-transform group-hover:scale-110", pathname.startsWith(item.href) ? "text-blue-400" : "text-slate-600")} />
+                  <item.icon className={cn("h-5 w-5 transition-transform group-hover:scale-110", (pathname && pathname.startsWith(item.href)) ? "text-blue-400" : "text-slate-600")} />
                   {item.name}
                 </Link>
               ))}
