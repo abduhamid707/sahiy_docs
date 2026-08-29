@@ -10,8 +10,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, ImagePlus } from "lucide-react";
 import Link from "next/link";
+import { ImageUpload } from "@/components/shared/ImageUpload";
 
 import { ALL_ROLES } from "@/lib/constants";
 
@@ -118,7 +119,33 @@ export default function NewDocForm({ projects, categories }: { projects: any[], 
                 />
               </div>
               <div className="space-y-3">
-                <Label htmlFor="content" className="text-sm font-bold text-foreground ml-1">Markdown matni</Label>
+                <div className="flex items-center justify-between ml-1">
+                  <Label htmlFor="content" className="text-sm font-bold text-foreground">Markdown matni</Label>
+                  <ImageUpload 
+                    onUploadSuccess={(url) => {
+                      const textarea = document.getElementById("content") as HTMLTextAreaElement;
+                      if (!textarea) return;
+                      
+                      const start = textarea.selectionStart;
+                      const end = textarea.selectionEnd;
+                      const text = formData.content;
+                      const before = text.substring(0, start);
+                      const after = text.substring(end);
+                      const imageMarkdown = `\n![Rasm](${url})\n`;
+                      
+                      setFormData(prev => ({
+                        ...prev,
+                        content: before + imageMarkdown + after
+                      }));
+
+                      // Focus back to textarea
+                      setTimeout(() => {
+                        textarea.focus();
+                        textarea.setSelectionRange(start + imageMarkdown.length, start + imageMarkdown.length);
+                      }, 0);
+                    }}
+                  />
+                </div>
                 <Textarea 
                   id="content" 
                   placeholder="# Bu yerga markdown formatidagi matnni kiriting..."

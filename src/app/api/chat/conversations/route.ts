@@ -18,15 +18,15 @@ export async function GET(request: Request) {
     // Foydalanuvchi qatnashgan barcha chatlar va ochiq guruhlar
     let conversations = await Conversation.find({
       $or: [
-        { type: "GROUP", name: "Sahiy Team" }, // Public group
+        { type: "GROUP", name: { $in: ["Sahiy Chat", "Sahiy Team"] } }, // Public group
         { participants: userId } // User participated
       ]
     }).populate("lastMessage").populate("participants", "name email image");
 
-    // Agar conversations bo'sh bo'lsa, "Sahiy Team" ni yaratib qaytaramiz
+    // Agar conversations bo'sh bo'lsa, "Sahiy Chat" ni yaratib qaytaramiz
     if (conversations.length === 0) {
       const conv = await Conversation.findOneAndUpdate(
-        { name: "Sahiy Team", type: "GROUP" },
+        { name: "Sahiy Chat", type: "GROUP" },
         { $setOnInsert: { participants: [] } },
         { upsert: true, new: true }
       );

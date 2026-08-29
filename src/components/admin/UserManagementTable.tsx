@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Trash2, UserCog, ShieldCheck, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 import { ALL_ROLES } from "@/lib/constants";
 
@@ -25,8 +26,12 @@ const getRoleColor = (role: string) => {
 };
 
 export default function UserManagementTable({ initialUsers, currentUserId }: { initialUsers: any[], currentUserId: string }) {
+  const { data: session } = useSession();
   const [users, setUsers] = useState(initialUsers);
   const router = useRouter();
+  
+  const sessionUser = session?.user as any;
+  const isSuperAdmin = sessionUser?.role === "SUPER_ADMIN";
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     try {
@@ -43,6 +48,27 @@ export default function UserManagementTable({ initialUsers, currentUserId }: { i
 
       setUsers(users.map(u => u._id === userId ? { ...u, role: newRole } : u));
       toast.success("Foydalanuvchi roli muvaffaqiyatli yangilandi");
+      router.refresh();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleLeadChange = async (userId: string, isLead: boolean) => {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isLead }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Lead holatini yangilashda xatolik yuz berdi");
+      }
+
+      setUsers(users.map(u => u._id === userId ? { ...u, isLead } : u));
+      toast.success("Lead holati muvaffaqiyatli yangilandi");
       router.refresh();
     } catch (error: any) {
       toast.error(error.message);
@@ -78,6 +104,7 @@ export default function UserManagementTable({ initialUsers, currentUserId }: { i
             <TableHead className="w-[300px] h-16 px-8 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Foydalanuvchi</TableHead>
             <TableHead className="h-16 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Email manzili</TableHead>
             <TableHead className="h-16 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Hozirgi rol</TableHead>
+            <TableHead className="h-16 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Team Lead</TableHead>
             <TableHead className="h-16 text-[10px] font-black uppercase text-muted-foreground tracking-widest">Rolni o'zgartirish</TableHead>
             <TableHead className="h-16 px-8 text-right text-[10px] font-black uppercase text-muted-foreground tracking-widest">Amallar</TableHead>
           </TableRow>
@@ -108,10 +135,21 @@ export default function UserManagementTable({ initialUsers, currentUserId }: { i
                 </Badge>
               </TableCell>
               <TableCell className="py-5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`rounded-lg text-xs font-bold ${user.isLead ? "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20" : "text-muted-foreground hover:bg-muted"}`}
+                  onClick={() => handleLeadChange(user._id, !user.isLead)}
+                  disabled={user._id === currentUserId || !isSuperAdmin}
+                >
+                  {user.isLead ? "Lead" : "Staff"}
+                </Button>
+              </TableCell>
+              <TableCell className="py-5">
                 <Select 
                   defaultValue={user.role} 
                   onValueChange={(val) => handleRoleChange(user._id, val || "")}
-                  disabled={user._id === currentUserId}
+                  disabled={user._id === currentUserId || !isSuperAdmin}
                 >
                   <SelectTrigger className="w-[180px] h-10 rounded-xl border-border bg-background shadow-sm focus:ring-blue-500/20 font-bold text-xs">
                     <SelectValue placeholder="Rolni tanlang" />

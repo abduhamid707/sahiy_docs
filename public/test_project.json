@@ -1,0 +1,21 @@
+{
+  "project": {
+    "name": "Import Test Project",
+    "description": "Project created via import",
+    "techStack": ["Test"],
+    "allowedRoles": ["ADMIN"]
+  },
+  "categories": [
+    {
+      "name": "Test Category",
+      "order": 1,
+      "documents": [
+        {
+          "title": "Test Document",
+          "content": "This is a test document",
+          "status": "PUBLISHED"
+        }
+      ]
+    }
+  ]
+}

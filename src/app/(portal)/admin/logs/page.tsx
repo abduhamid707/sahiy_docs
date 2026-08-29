@@ -22,17 +22,19 @@ export default function LogsPage() {
   }, []);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-black text-foreground">Tizim jurnali (Logs)</h1>
-      <p className="text-muted-foreground">Foydalanuvchilar tomonidan amalga oshirilgan barcha harakatlar tarixi.</p>
+    <div className="space-y-4 sm:space-y-6">
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-black text-foreground">Tizim jurnali (Logs)</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1">Foydalanuvchilar tomonidan amalga oshirilgan barcha harakatlar tarixi.</p>
+      </div>
 
-      <Card className="rounded-[2.5rem] border-border shadow-xl bg-card">
-        <CardContent className="p-6">
+      <Card className="rounded-2xl sm:rounded-3xl border-border shadow-sm sm:shadow-xl bg-card overflow-hidden">
+        <CardContent className="p-3 sm:p-6">
           {loading ? (
-            <p className="text-center py-4">Yuklanmoqda...</p>
+            <p className="text-center py-8 text-sm text-muted-foreground">Yuklanmoqda...</p>
           ) : (
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="min-w-[620px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="font-bold">Foydalanuvchi</TableHead>

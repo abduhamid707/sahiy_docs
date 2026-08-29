@@ -11,14 +11,22 @@ export default async function UsersPage() {
   if (!session) redirect("/login");
   
   const role = (session.user as any)?.role;
+  const isLead = (session.user as any)?.isLead;
+  const isSuperAdmin = role === "SUPER_ADMIN";
 
-  // Only SUPER_ADMIN can see this page
-  if (role !== "SUPER_ADMIN") {
+  if (!isSuperAdmin && !isLead) {
     redirect("/");
   }
 
   await dbConnect();
-  const users = await User.find().sort({ createdAt: -1 });
+  
+  let query = {};
+  if (!isSuperAdmin && isLead) {
+    // Lead can only see users of their own department
+    query = { role: role };
+  }
+  
+  const users = await User.find(query).sort({ createdAt: -1 });
 
   return (
     <div className="space-y-6">

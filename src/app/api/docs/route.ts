@@ -51,7 +51,10 @@ export async function POST(req: Request) {
     const userId = (session?.user as any)?.id;
     const userRole = (session?.user as any)?.role;
 
-    if (!session || !userId) {
+    const user = session?.user as any;
+    const isAllowed = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.isLead;
+
+    if (!session || !userId || !isAllowed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

@@ -3,7 +3,6 @@ import { Server as IOServer } from "socket.io";
 import { Server as HTTPServer } from "http";
 import { Socket as NetSocket } from "net";
 import dbConnect from "../../lib/mongodb";
-import { Message } from "../../models/Message";
 import { Conversation } from "../../models/Conversation";
 import { User } from "../../models/User";
 import { adminMessaging } from "../../lib/firebase-admin";
@@ -82,7 +81,7 @@ export default async function handler(req: NextApiRequest, res: ResponseWithSock
               }
             });
 
-            if (tokens.length > 0) {
+            if (tokens.length > 0 && adminMessaging) {
               const payload = {
                 notification: {
                   title: `Yangi xabar: ${data.sender}`,

@@ -10,11 +10,13 @@ import { redirect } from "next/navigation";
 
 export default async function AdminDashboard() {
   const session = await auth();
-  const role = (session?.user as any)?.role;
+  const sessionUser = session?.user as any;
+  const role = sessionUser?.role;
+  const isLead = sessionUser?.isLead;
   const isAdmin = role === "SUPER_ADMIN" || role === "ADMIN";
   const isDeveloper = role === "MOBILE" || role === "FRONTEND" || role === "BACKEND";
 
-  if (!isAdmin && !isDeveloper) redirect("/");
+  if (!isAdmin && !isDeveloper && !isLead) redirect("/");
 
   await dbConnect();
   

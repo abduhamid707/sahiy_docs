@@ -10,9 +10,15 @@ import { UserPlus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { ALL_ROLES } from "@/lib/constants";
+import { useSession } from "next-auth/react";
 
 export default function AddUserDialog() {
+  const { data: session } = useSession();
   const [open, setOpen] = useState(false);
+  
+  const sessionUser = session?.user as any;
+  const isSuperAdmin = sessionUser?.role === "SUPER_ADMIN";
+  const isLead = sessionUser?.isLead;
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -104,16 +110,20 @@ export default function AddUserDialog() {
 
             <div className="space-y-2">
               <Label htmlFor="role" className="text-[10px] font-black uppercase text-muted-foreground/70 tracking-widest ml-1">Rol</Label>
-              <Select name="role" defaultValue="VIEWER">
-                <SelectTrigger className="h-12 rounded-2xl border-border bg-background focus:ring-blue-500/20 font-bold transition-all">
+              <Select name="role" defaultValue={isSuperAdmin ? "VIEWER" : (sessionUser?.role || "VIEWER")}>
+                <SelectTrigger className="h-12 rounded-2xl border-border bg-background focus:ring-blue-500/20 font-bold transition-all" disabled={!isSuperAdmin && isLead}>
                   <SelectValue placeholder="Rolni tanlang" />
                 </SelectTrigger>
                 <SelectContent className="rounded-2xl border-border bg-card shadow-2xl dark:shadow-none">
-                  {ALL_ROLES.map((role) => (
+                  {isSuperAdmin ? ALL_ROLES.map((role) => (
                     <SelectItem key={role} value={role} className="rounded-xl text-xs font-bold py-2 focus:bg-blue-500/10 focus:text-blue-600 dark:focus:text-blue-400 cursor-pointer">
                       {role}
                     </SelectItem>
-                  ))}
+                  )) : (
+                    <SelectItem value={sessionUser?.role} className="rounded-xl text-xs font-bold py-2 focus:bg-blue-500/10 focus:text-blue-600 dark:focus:text-blue-400 cursor-pointer">
+                      {sessionUser?.role}
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>

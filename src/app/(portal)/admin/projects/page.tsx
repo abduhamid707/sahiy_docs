@@ -12,14 +12,23 @@ import { ImportButton } from "@/components/shared/ImportButton";
 
 export default async function AdminProjectsPage() {
   const session = await auth();
-  const role = (session?.user as any)?.role;
+  const sessionUser = session?.user as any;
+  const role = sessionUser?.role;
+  const isLead = sessionUser?.isLead;
+  const isAdmin = role === "SUPER_ADMIN" || role === "ADMIN";
 
-  if (role !== "SUPER_ADMIN" && role !== "ADMIN") {
+  if (!isAdmin && !isLead) {
     redirect("/");
   }
 
   await dbConnect();
-  const projects = await Project.find({}).sort({ createdAt: -1 });
+  
+  let query = {};
+  if (!isAdmin && isLead) {
+    query = { allowedRoles: { $in: [role] } };
+  }
+  
+  const projects = await Project.find(query).sort({ createdAt: -1 });
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-1000">

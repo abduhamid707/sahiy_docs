@@ -109,6 +109,16 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
                 p: ({node, ...props}) => <p className="text-muted-foreground leading-relaxed mb-6 font-medium text-sm sm:text-base" {...props} />,
                 code: ({node, ...props}) => <code className="bg-muted text-blue-600 dark:text-blue-400 px-2 py-1 rounded-lg font-bold text-xs sm:text-sm" {...props} />,
                 pre: ({node, ...props}) => <pre className="bg-slate-900 text-slate-50 p-4 sm:p-6 rounded-2xl overflow-x-auto shadow-inner my-8 text-xs sm:text-sm" {...props} />,
+                img: ({node, ...props}) => (
+                  <span className="block my-10 overflow-hidden rounded-[2rem] border border-border shadow-2xl shadow-slate-200/50 dark:shadow-none">
+                    <img className="w-full h-auto object-cover" {...props} alt={props.alt || "Hujjat rasmi"} />
+                    {props.alt && props.alt !== "Rasm" && (
+                      <span className="block p-4 text-center text-xs font-bold text-muted-foreground bg-muted/30 border-t border-border tracking-widest uppercase italic">
+                        {props.alt}
+                      </span>
+                    )}
+                  </span>
+                ),
               }}
             >
               {doc.content || "*Hozircha tarkib mavjud emas.*"}

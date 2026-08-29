@@ -18,11 +18,19 @@ const UserSchema = new Schema(
         "HR",
         "VIEWER",
         "MOBILE",
+        "DESIGNER",
+        "SUPPORT",
       ],
       default: "VIEWER",
     },
+    isLead: { type: Boolean, default: false },
     fcmTokens: [String],
     image: { type: String },
+    telegram: {
+      chatId: { type: String },
+      linkCode: { type: String },
+      linkCodeExpiresAt: { type: Date },
+    },
   },
   { timestamps: true }
 );

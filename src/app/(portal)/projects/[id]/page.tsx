@@ -6,6 +6,8 @@ import { Document } from "@/models/Document";
 import Link from "next/link";
 import { ChevronRight, FileText, Layout, Info, FolderKanban } from "lucide-react";
 import { notFound } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -49,9 +51,21 @@ export default async function ProjectDetailPage({ params }: { params: Promise<{ 
             <span className="text-muted-foreground">{project.name}</span>
           </div>
           <h1 className="text-3xl sm:text-5xl font-black text-foreground mb-4 sm:mb-6 tracking-tight">{project.name}</h1>
-          <p className="text-base sm:text-xl text-muted-foreground max-w-3xl leading-relaxed font-medium">
-            {project.description || project.name + " loyihasi uchun barcha texnik va funktsional hujjatlar."}
-          </p>
+          <div className="prose prose-blue dark:prose-invert max-w-3xl leading-relaxed font-medium">
+            <ReactMarkdown 
+              remarkPlugins={[remarkGfm]}
+              components={{
+                p: ({node, ...props}) => <p className="text-base sm:text-xl text-muted-foreground mb-4" {...props} />,
+                img: ({node, ...props}) => (
+                  <span className="block my-6 overflow-hidden rounded-2xl border border-border shadow-xl">
+                    <img className="w-full h-auto object-cover" {...props} alt={props.alt || "Loyiha rasmi"} />
+                  </span>
+                ),
+              }}
+            >
+              {project.description || project.name + " loyihasi uchun barcha texnik va funktsional hujjatlar."}
+            </ReactMarkdown>
+          </div>
         </div>
         <div className="absolute top-0 right-0 p-12 opacity-[0.03] dark:opacity-[0.05] scale-100 sm:scale-150 pointer-events-none hidden sm:block text-foreground">
           <FolderKanban size={240} />

@@ -6,18 +6,34 @@ import { Project } from "@/models/Project";
 export async function POST(req: Request) {
   try {
     const session = await auth();
-    const role = (session?.user as any)?.role;
+    const sessionUser = session?.user as any;
+    
+    if (!session || !sessionUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    if (role !== "SUPER_ADMIN" && role !== "ADMIN") {
+    const isAllowed = sessionUser.role === "SUPER_ADMIN" || sessionUser.role === "ADMIN" || sessionUser.isLead;
+
+    if (!isAllowed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
     const body = await req.json();
+    const userRole = sessionUser.role;
+    
+    const projectRoles = [...(body.allowedRoles || [])];
+    if (userRole && !["ADMIN", "SUPER_ADMIN"].includes(userRole)) {
+      if (!projectRoles.includes(userRole)) {
+        projectRoles.push(userRole);
+      }
+    }
+    
+    body.allowedRoles = projectRoles.length > 0 ? projectRoles : ["ADMIN", "SUPER_ADMIN"];
     
     const project = await Project.create({
       ...body,
-      owner: session?.user?.id,
+      owner: sessionUser.id,
     });
 
     return NextResponse.json(project, { status: 201 });

@@ -16,6 +16,7 @@
     "clsx": "^2.1.1",
     "firebase": "^12.13.0",
     "firebase-admin": "^13.9.0",
+    "grammy": "^1.45.1",
     "lucide-react": "^1.14.0",
     "mongoose": "^9.6.1",
     "next": "16.2.4",

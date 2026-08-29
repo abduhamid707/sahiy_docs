@@ -6,14 +6,30 @@ import { Category } from "@/models/Category";
 export async function POST(req: Request) {
   try {
     const session = await auth();
-    const role = (session?.user as any)?.role;
+    const sessionUser = session?.user as any;
+    
+    if (!session || !sessionUser) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    if (role !== "SUPER_ADMIN" && role !== "ADMIN") {
+    const isAllowed = sessionUser.role === "SUPER_ADMIN" || sessionUser.role === "ADMIN" || sessionUser.isLead;
+
+    if (!isAllowed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await dbConnect();
     const body = await req.json();
+    const userRole = sessionUser.role;
+    
+    const categoryRoles = [...(body.allowedRoles || [])];
+    if (userRole && !["ADMIN", "SUPER_ADMIN"].includes(userRole)) {
+      if (!categoryRoles.includes(userRole)) {
+        categoryRoles.push(userRole);
+      }
+    }
+    
+    body.allowedRoles = categoryRoles.length > 0 ? categoryRoles : ["ADMIN", "SUPER_ADMIN"];
     
     const category = await Category.create(body);
     return NextResponse.json(category, { status: 201 });

@@ -11,7 +11,10 @@ export async function POST(req: Request) {
     const userId = (session?.user as any)?.id;
     const userRole = (session?.user as any)?.role;
 
-    if (!session || !userId) {
+    const user = session?.user as any;
+    const isAllowed = user?.role === "SUPER_ADMIN" || user?.role === "ADMIN" || user?.isLead;
+
+    if (!session || !userId || !isAllowed) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -22,10 +25,17 @@ export async function POST(req: Request) {
     let finalCategoryId = categoryId;
 
     if (newCategoryName && projectId) {
+      const categoryRoles = [...(allowedRoles || [])];
+      if (userRole && !["ADMIN", "SUPER_ADMIN"].includes(userRole)) {
+        if (!categoryRoles.includes(userRole)) {
+          categoryRoles.push(userRole);
+        }
+      }
+
       const category = await Category.create({
         name: newCategoryName,
         projectId,
-        allowedRoles: allowedRoles || ["ADMIN", "SUPER_ADMIN"],
+        allowedRoles: categoryRoles.length > 0 ? categoryRoles : ["ADMIN", "SUPER_ADMIN"],
       });
       finalCategoryId = category._id;
     }

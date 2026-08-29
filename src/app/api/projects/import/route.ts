@@ -8,12 +8,20 @@ import { auth } from "@/auth";
 export async function POST(req: Request) {
   try {
     const session = await auth();
-    
-    if (!session || ((session.user as any).role !== "SUPER_ADMIN" && (session.user as any).role !== "ADMIN")) {
+    if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = (session.user as any).id;
+    const sessionUser = session.user as any;
+    const role = sessionUser.role;
+    const isLead = sessionUser.isLead;
+    const isAdmin = role === "SUPER_ADMIN" || role === "ADMIN";
+
+    if (!isAdmin && !isLead) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = sessionUser.id;
 
     await dbConnect();
     const data = await req.json();

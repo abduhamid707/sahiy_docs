@@ -91,15 +91,15 @@ export default function ChatPage() {
         if (permission === "granted") {
           console.log("Notification permission granted.");
           if (messaging) {
-            const VAPID_KEY = "BPjS0zYKJrgOTFpOeROEUHWAKoNRXWsuhyuV43Vn_oqU9tbNaN6CDVq0WnI6d69Iv7AL4x5E5_R2SViTbsWmlMI"; 
+            const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
             
             try {
               // Service worker'ni qo'lda ro'yxatdan o'tkazish
               const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
               console.log("Service Worker ro'yxatdan o'tdi.");
 
-              const token = await getToken(messaging, { 
-                vapidKey: VAPID_KEY,
+              const token = await getToken(messaging, {
+                ...(vapidKey ? { vapidKey } : {}),
                 serviceWorkerRegistration: registration
               });
               console.log("FCM Token:", token);
@@ -370,9 +370,9 @@ export default function ChatPage() {
               </AvatarFallback>
             </Avatar>
             <div>
-              <p className="font-bold">{currentConversation?.name || "Sahiy Team"}</p>
+              <p className="font-bold">{currentConversation?.name || "Sahiy Chat"}</p>
               <p className="text-xs text-muted-foreground">
-                {currentConversation?.name === "Sahiy Team" ? `${users.length} ta a'zo` : "Online"}
+                {currentConversation?.name === "Sahiy Chat" || currentConversation?.name === "Sahiy Team" ? `${users.length} ta a'zo` : "Online"}
               </p>
             </div>
           </div>

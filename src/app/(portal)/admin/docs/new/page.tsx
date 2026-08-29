@@ -9,10 +9,12 @@ export default async function NewDocPage() {
   const session = await auth();
   const role = (session?.user as any)?.role;
 
+  const sessionUser = session?.user as any;
+  const isLead = sessionUser?.isLead;
   const isAdmin = role === "SUPER_ADMIN" || role === "ADMIN";
   const isDeveloper = role === "MOBILE" || role === "FRONTEND";
 
-  if (!isAdmin && !isDeveloper) {
+  if (!isAdmin && !isDeveloper && !isLead) {
     redirect("/");
   }
 

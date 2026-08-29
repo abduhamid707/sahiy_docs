@@ -3,13 +3,13 @@ import { getAnalytics, Analytics } from "firebase/analytics";
 import { getMessaging, Messaging } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDlpIhIMINndkIWV_9gUOc99dmY31OVAlI",
-  authDomain: "sahiy-team.firebaseapp.com",
-  projectId: "sahiy-team",
-  storageBucket: "sahiy-team.firebasestorage.app",
-  messagingSenderId: "465897540246",
-  appId: "1:465897540246:web:0a4c6adac0e8330d7310b7",
-  measurementId: "G-XCX0GDX34K"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 // Initialize Firebase
@@ -18,9 +18,18 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 let analytics: Analytics | undefined;
 let messaging: Messaging | undefined;
 
-if (typeof window !== "undefined") {
-  analytics = getAnalytics(app);
-  messaging = getMessaging(app);
+if (typeof window !== "undefined" && firebaseConfig.apiKey) {
+  try {
+    messaging = getMessaging(app);
+  } catch (e) {
+    console.warn("Firebase Messaging init warning:", e);
+  }
+  try {
+    analytics = getAnalytics(app);
+  } catch (e) {
+    console.warn("Firebase Analytics init warning:", e);
+  }
 }
 
 export { app, analytics, messaging };
+

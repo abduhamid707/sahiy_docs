@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Firebase admin SDK
 sahiy-team-firebase-adminsdk-fbsvc-9bd8bfb5d5.json
+sahiydocsfcm-firebase-adminsdk*.json
+*.tar.gz
+
