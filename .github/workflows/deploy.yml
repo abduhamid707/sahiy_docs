@@ -37,7 +37,7 @@ jobs:
         env:
           PROD_HOST: ${{ secrets.PROD_HOST || '158.220.100.58' }}
           PROD_USER: ${{ secrets.PROD_USER || 'root' }}
-          PROD_PASS: ${{ secrets.PROD_PASSWORD || 'WeXw8VT3DO77iS5m0Hq6muT' }}
+          PROD_PASS: ${{ secrets.PROD_PASSWORD }}
           PORT: "3006"
           APP_NAME: "sahiy-docs"
         run: |
@@ -56,6 +56,9 @@ jobs:
           DEPLOY_SCRIPT="set -e
           mkdir -p /root/sahiy-docs
           cd /root/sahiy-docs
+          # src deploy paketining authoritative qismi: avvalgi release'dan
+          # o'chirilgan fayllar (masalan SidebarWrapper.tsx) qolib ketmasin.
+          rm -rf /root/sahiy-docs/src
           tar -xzvf /root/sahiy-docs.tar.gz
           rm -f /root/sahiy-docs.tar.gz
 
@@ -77,6 +80,10 @@ jobs:
           if [ -f ~/.ssh/id_rsa ] && [ -s ~/.ssh/id_rsa ] && ssh-keygen -l -f ~/.ssh/id_rsa >/dev/null 2>&1; then
             ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${PROD_USER}@${PROD_HOST} "$DEPLOY_SCRIPT"
           else
+            if [ -z "${PROD_PASS}" ]; then
+              echo "PROD_PASSWORD GitHub secret is required when PROD_SSH_KEY is unavailable."
+              exit 1
+            fi
             sshpass -p "${PROD_PASS}" ssh -o StrictHostKeyChecking=no ${PROD_USER}@${PROD_HOST} "$DEPLOY_SCRIPT"
           fi
 
