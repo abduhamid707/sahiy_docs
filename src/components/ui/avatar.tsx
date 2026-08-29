@@ -19,13 +19,34 @@ Avatar.displayName = "Avatar"
 const AvatarImage = React.forwardRef<
   HTMLImageElement,
   React.ImgHTMLAttributes<HTMLImageElement>
->(({ className, ...props }, ref) => (
-  <img
-    ref={ref}
-    className={cn("aspect-square h-full w-full", className)}
-    {...props}
-  />
-))
+>(({ className, src, alt = "", onError, ...props }, ref) => {
+  const [hasError, setHasError] = React.useState(!src)
+
+  React.useEffect(() => {
+    setHasError(!src)
+  }, [src])
+
+  if (!src || hasError) return null
+
+  return (
+    // Avatar URLs may come from external providers without a configured Next.js image host.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      ref={ref}
+      src={src}
+      alt={alt}
+      className={cn(
+        "absolute inset-0 z-10 aspect-square h-full w-full object-cover",
+        className
+      )}
+      onError={(event) => {
+        setHasError(true)
+        onError?.(event)
+      }}
+      {...props}
+    />
+  )
+})
 AvatarImage.displayName = "AvatarImage"
 
 const AvatarFallback = React.forwardRef<
@@ -35,7 +56,7 @@ const AvatarFallback = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "flex h-full w-full items-center justify-center rounded-full bg-muted text-sm font-medium",
+      "absolute inset-0 flex h-full w-full items-center justify-center rounded-full bg-muted text-sm font-medium",
       className
     )}
     {...props}

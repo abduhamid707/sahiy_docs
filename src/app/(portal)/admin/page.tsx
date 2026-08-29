@@ -57,7 +57,7 @@ export default async function AdminDashboard() {
     <div className="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex flex-col gap-2">
         <h1 className="text-4xl font-black text-foreground tracking-tight">Admin paneli</h1>
-        <p className="text-lg text-muted-foreground font-medium italic">Sahiy Docs platformasi faoliyati va tizim holati.</p>
+        <p className="text-lg text-muted-foreground font-medium italic">Sahiy platformasi faoliyati va tizim holati.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">

@@ -1,6 +1,6 @@
-# Sahiy Docs uchun Hujjat Yaratish Prompti
+# Sahiy uchun Hujjat Yaratish Prompti
 
-Quyidagi ko'rsatmalar asosida loyiha hujjati uchun JSON formatidagi fayl yarating. Bu faylni keyinchalik Sahiy Docs tizimiga import qilish mumkin bo'ladi.
+Quyidagi ko'rsatmalar asosida loyiha hujjati uchun JSON formatidagi fayl yarating. Bu faylni keyinchalik Sahiy tizimiga import qilish mumkin bo'ladi.
 
 ## Ko'rsatmalar:
 Sizdan quyidagi loyiha/funksiya haqida texnik hujjat yaratish so'raladi. Hujjatni faqat va faqat quyidagi JSON formatida qaytaring (hech qanday qo'shimcha matn yoki tushuntirishlarsiz).

@@ -12,7 +12,7 @@ export default function Breadcrumbs() {
   return (
     <nav className="flex items-center text-xs sm:text-sm text-muted-foreground overflow-hidden whitespace-nowrap">
       <Link
-        href="/"
+        href="/crm"
         className="flex items-center gap-1 hover:text-foreground transition-colors shrink-0"
       >
         <Home className="h-3.5 w-3.5 sm:h-4 sm:w-4" />

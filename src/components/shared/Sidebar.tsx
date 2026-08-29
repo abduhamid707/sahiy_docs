@@ -4,13 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
-  Book,
-  LayoutDashboard,
   Settings,
-  FileText,
   Users,
-  FolderKanban,
-  ChevronRight,
   X,
   MessageSquare,
   Headset,
@@ -18,8 +13,9 @@ import {
 } from "lucide-react";
 
 const navItems = [
-  { name: "Boshqaruv paneli", href: "/", icon: LayoutDashboard },
-  { name: "Barcha loyihalar", href: "/projects", icon: FolderKanban },
+  // Hozircha yashirilgan — keyin bosqichma-bosqich qaytaramiz:
+  // { name: "Boshqaruv paneli", href: "/", icon: LayoutDashboard },
+  // { name: "Barcha loyihalar", href: "/projects", icon: FolderKanban },
   { name: "Sahiy Chat", href: "/chat", icon: MessageSquare },
 ];
 
@@ -29,18 +25,28 @@ const supportItems = [
 ];
 
 const adminItems = [
-  { name: "Admin paneli", href: "/admin", icon: LayoutDashboard },
-  { name: "Loyihalar boshqaruvi", href: "/admin/projects", icon: FolderKanban },
-  { name: "Kontent boshqaruvi", href: "/admin/docs", icon: FileText },
+  // Hozircha yashirilgan — keyin bosqichma-bosqich qaytaramiz:
+  // { name: "Admin paneli", href: "/admin", icon: LayoutDashboard },
+  // { name: "Loyihalar boshqaruvi", href: "/admin/projects", icon: FolderKanban },
+  // { name: "Kontent boshqaruvi", href: "/admin/docs", icon: FileText },
   { name: "Foydalanuvchilar", href: "/admin/users", icon: Users },
-  { name: "Tizim jurnali", href: "/admin/logs", icon: FileText },
+  // { name: "Tizim jurnali", href: "/admin/logs", icon: FileText },
 ];
 
 import { ROLE_LABELS, UserRole } from "@/lib/constants";
 
-export default function Sidebar({ user, projects = [], isOpen, onClose }: { 
-  user: any, 
-  projects?: any[],
+type SidebarUser = {
+  role?: UserRole;
+  isLead?: boolean;
+  name?: string | null;
+  email?: string | null;
+};
+
+type SidebarProject = { _id: string; name: string };
+
+export default function Sidebar({ user, isOpen, onClose }: { 
+  user: SidebarUser, 
+  projects?: SidebarProject[],
   isOpen?: boolean,
   onClose?: () => void 
 }) {
@@ -48,7 +54,6 @@ export default function Sidebar({ user, projects = [], isOpen, onClose }: {
   const role = user?.role as UserRole;
   const isAdmin = role === "SUPER_ADMIN" || role === "ADMIN";
   const isLead = user?.isLead;
-  const canManageDocs = isAdmin || role === "MOBILE" || role === "FRONTEND" || role === "BACKEND";
   const canSeeSupport = isAdmin || isLead || role === "SUPPORT";
 
   const isSupportOnly = role === "SUPPORT" && !isAdmin && !isLead;
@@ -60,20 +65,7 @@ export default function Sidebar({ user, projects = [], isOpen, onClose }: {
     return true;
   });
 
-  const filteredAdminItems = adminItems.filter(item => {
-    if (item.href === "/admin/logs") return role === "SUPER_ADMIN";
-    if (isAdmin) return true;
-    
-    if (isLead) {
-      if (item.href === "/admin") return true;
-      if (item.href === "/admin/projects") return true;
-      if (item.href === "/admin/users") return true;
-      if (item.href === "/admin/docs") return true;
-    }
-    
-    if (canManageDocs && item.href === "/admin/docs") return true;
-    return false;
-  });
+  const filteredAdminItems = adminItems.filter(() => isAdmin || isLead);
 
   return (
     <>
@@ -90,12 +82,14 @@ export default function Sidebar({ user, projects = [], isOpen, onClose }: {
         isOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="flex h-20 items-center justify-between px-8 border-b border-slate-800/50 bg-brand-blue/50 dark:bg-slate-950/50 backdrop-blur-md sticky top-0 z-10">
-          <Link href={isSupportOnly ? "/crm" : "/"} className="flex items-center gap-3 group" onClick={onClose}>
+          <Link href="/crm" className="flex items-center gap-3 group" onClick={onClose}>
             <div className="h-10 w-10 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-              <img src="/logo_sahiy.png" alt="Sahiy Logo" className="h-10 w-10 object-contain" />
+              {/* Public brand asset: direct loading avoids dev image-optimizer failures. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo_sahiy.png" alt="Sahiy Logo" width={40} height={40} className="h-10 w-10 object-contain" />
             </div>
             <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-              Sahiy Docs
+              Sahiy
             </span>
           </Link>
           <button 
@@ -157,6 +151,7 @@ export default function Sidebar({ user, projects = [], isOpen, onClose }: {
           </div>
         )}
 
+        {/* Hozircha loyiha ro‘yxati yashirildi — keyin qayta yoqiladi.
         {!isSupportOnly && projects.length > 0 && (
           <div>
             <h3 className="mb-4 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
@@ -180,12 +175,12 @@ export default function Sidebar({ user, projects = [], isOpen, onClose }: {
               ))}
             </nav>
           </div>
-        )}
+        )} */}
 
         {(isAdmin || filteredAdminItems.length > 0) && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h3 className="mb-4 px-4 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-500/70">
-              Ma'muriyat
+              Ma&apos;muriyat
             </h3>
             <nav className="space-y-1.5">
               {filteredAdminItems.map((item) => (

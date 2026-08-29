@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { NextAuthConfig } from "next-auth";
 
 export const authConfig = {
@@ -30,10 +31,7 @@ export const authConfig = {
 
       if (isAuthPage) {
         if (isLoggedIn) {
-          if (role === "SUPER_ADMIN" || role === "ADMIN") {
-            return Response.redirect(new URL("/admin", nextUrl));
-          }
-          return Response.redirect(new URL("/", nextUrl));
+          return Response.redirect(new URL("/crm", nextUrl));
         }
         return true;
       }

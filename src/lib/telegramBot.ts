@@ -23,7 +23,7 @@ export function startTelegramBot() {
     const code = ctx.match?.toString().trim();
     if (!code) {
       await ctx.reply(
-        "Salom! Bu Sahiy Docs qo'llab-quvvatlash boti. Hisobingizni ulash uchun profilingizdagi \"Telegramni ulash\" tugmasidan foydalaning."
+        "Salom! Bu Sahiy qo'llab-quvvatlash boti. Hisobingizni ulash uchun profilingizdagi \"Telegramni ulash\" tugmasidan foydalaning."
       );
       return;
     }

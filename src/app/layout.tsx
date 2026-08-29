@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sahiy Docs",
+  title: "Sahiy",
   description: "Internal Documentation Platform",
 };
 
@@ -39,4 +39,3 @@ export default function RootLayout({
     </html>
   );
 }
-

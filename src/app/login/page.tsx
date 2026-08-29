@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import logoSahiy from "../../../public/logo_sahiy.png";
 
@@ -23,6 +22,7 @@ export default function LoginPage() {
       const res = await signIn("credentials", {
         email,
         password,
+        callbackUrl: "/crm",
         redirect: false,
       });
 
@@ -36,10 +36,10 @@ export default function LoginPage() {
         setLoading(false);
       } else {
         // Only redirect if there is no error
-        router.push("/");
+        router.replace("/crm");
         router.refresh();
       }
-    } catch (err) {
+    } catch {
       setError("Server bilan ulanishda xatolik yuz berdi");
       setLoading(false);
     }
@@ -59,7 +59,7 @@ export default function LoginPage() {
             <Image src={logoSahiy} alt="Sahiy Logo" width={80} height={80} className="object-contain" />
           </div>
           <h2 className="text-4xl sm:text-5xl font-black tracking-tighter text-white">
-            Sahiy Docs
+            Sahiy
           </h2>
           <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px]">
             Ichki hujjatlar portali

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, CheckCheck, CircleAlert, Loader2 } from "lucide-react";
 import { onMessage } from "firebase/messaging";
+import { toast } from "sonner";
 import { messaging } from "@/lib/firebase";
 import { formatUzDateTime } from "@/lib/crm";
 import { cn } from "@/lib/utils";
@@ -39,7 +40,16 @@ export default function HeaderNotifications({ enabled }: { enabled: boolean }) {
     window.addEventListener("focus", refreshOnFocus);
     window.addEventListener("crm-notifications-changed", refreshOnFocus);
     document.addEventListener("visibilitychange", refreshWhenVisible);
-    const unsubscribe = messaging ? onMessage(messaging, () => load(true)) : undefined;
+    const unsubscribe = messaging ? onMessage(messaging, (payload) => {
+      if (payload.data?.kind === "CHAT_MESSAGE") {
+        toast(payload.notification?.title || "Sahiy Chat", {
+          description: payload.notification?.body,
+          action: payload.data?.link ? { label: "Ochish", onClick: () => router.push(payload.data!.link) } : undefined,
+        });
+      } else {
+        load(true);
+      }
+    }) : undefined;
     return () => {
       window.clearTimeout(initial);
       window.removeEventListener("focus", refreshOnFocus);
@@ -47,7 +57,7 @@ export default function HeaderNotifications({ enabled }: { enabled: boolean }) {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       unsubscribe?.();
     };
-  }, [enabled, load]);
+  }, [enabled, load, router]);
 
   useEffect(() => {
     const close = (event: MouseEvent) => {

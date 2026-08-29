@@ -1,4 +1,4 @@
-import mongoose, { Schema, model, models } from "mongoose";
+import { Schema, model, models } from "mongoose";
 
 const MessageSchema = new Schema(
   {
@@ -11,6 +11,7 @@ const MessageSchema = new Schema(
     },
     repliesTo: { type: Schema.Types.ObjectId, ref: "Message" },
     seenBy: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    editedAt: { type: Date },
     file: {
       url: { type: String },
       fileType: { type: String }, // "IMAGE", "DOCUMENT"
@@ -19,5 +20,7 @@ const MessageSchema = new Schema(
   },
   { timestamps: true }
 );
+
+MessageSchema.index({ conversationId: 1, createdAt: -1 });
 
 export const Message = models.Message || model("Message", MessageSchema);

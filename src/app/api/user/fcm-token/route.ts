@@ -24,7 +24,31 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, message: "Token saved successfully" });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "FCM token saqlanmadi" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    await dbConnect();
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { token } = await request.json();
+    if (!token) {
+      return NextResponse.json({ success: false, error: "Token is required" }, { status: 400 });
+    }
+
+    await User.findByIdAndUpdate(session.user.id, {
+      $pull: { fcmTokens: token },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "FCM token o‘chirilmadi" }, { status: 500 });
   }
 }
