@@ -35,10 +35,11 @@ jobs:
           APP_NAME: "sahiy-docs"
         run: |
           echo "Packaging codebase for server sync..."
-          tar --exclude=node_modules --exclude=.next --exclude=.git -czvf sahiy-docs.tar.gz .
+          tar --exclude=node_modules --exclude=.next --exclude=.git --exclude=*.tar.gz --exclude=.env.local --warning=no-file-changed -czvf /tmp/sahiy-docs.tar.gz .
 
           echo "Uploading package to server..."
-          scp -i ~/.ssh/id_rsa sahiy-docs.tar.gz ${PROD_USER}@${PROD_HOST}:/root/sahiy-docs.tar.gz
+          scp -i ~/.ssh/id_rsa /tmp/sahiy-docs.tar.gz ${PROD_USER}@${PROD_HOST}:/root/sahiy-docs.tar.gz
+          rm -f /tmp/sahiy-docs.tar.gz
 
           echo "Executing Docker build and restart on server..."
           ssh -i ~/.ssh/id_rsa ${PROD_USER}@${PROD_HOST} << 'EOF'
