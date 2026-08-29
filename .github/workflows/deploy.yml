@@ -20,24 +20,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install SSHPass & Setup SSH
-        run: |
-          sudo apt-get update && sudo apt-get install -y sshpass
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          ssh-keyscan -H ${{ secrets.PROD_HOST || '158.220.100.58' }} >> ~/.ssh/known_hosts
+      - name: Setup SSH Keys
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
 
-          # If PROD_SSH_KEY is set and valid, write it
-          if [ -n "${{ secrets.PROD_SSH_KEY }}" ]; then
-            printf "%s\n" "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
-            chmod 600 ~/.ssh/id_rsa
-          fi
+      - name: Setup Known Hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.PROD_HOST || '158.220.100.58' }} >> ~/.ssh/known_hosts
 
       - name: Sync code to server and Deploy with Docker
         env:
           PROD_HOST: ${{ secrets.PROD_HOST || '158.220.100.58' }}
           PROD_USER: ${{ secrets.PROD_USER || 'root' }}
-          PROD_PASS: ${{ secrets.PROD_PASSWORD }}
           PORT: "3006"
           APP_NAME: "sahiy-docs"
         run: |
@@ -45,47 +41,33 @@ jobs:
           tar --exclude=node_modules --exclude=.next --exclude=.git --exclude=*.tar.gz --exclude=.env.local --warning=no-file-changed -czvf /tmp/sahiy-docs.tar.gz .
 
           echo "Uploading package to server..."
-          if [ -f ~/.ssh/id_rsa ] && [ -s ~/.ssh/id_rsa ] && ssh-keygen -l -f ~/.ssh/id_rsa >/dev/null 2>&1; then
-            scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa /tmp/sahiy-docs.tar.gz ${PROD_USER}@${PROD_HOST}:/root/sahiy-docs.tar.gz
-          else
-            sshpass -p "${PROD_PASS}" scp -o StrictHostKeyChecking=no /tmp/sahiy-docs.tar.gz ${PROD_USER}@${PROD_HOST}:/root/sahiy-docs.tar.gz
-          fi
+          scp -o StrictHostKeyChecking=no /tmp/sahiy-docs.tar.gz ${PROD_USER}@${PROD_HOST}:/root/sahiy-docs.tar.gz
           rm -f /tmp/sahiy-docs.tar.gz
 
           echo "Executing Docker build and restart on server..."
-          DEPLOY_SCRIPT="set -e
-          mkdir -p /root/sahiy-docs
-          cd /root/sahiy-docs
-          # src deploy paketining authoritative qismi: avvalgi release'dan
-          # o'chirilgan fayllar (masalan SidebarWrapper.tsx) qolib ketmasin.
-          rm -rf /root/sahiy-docs/src
-          tar -xzvf /root/sahiy-docs.tar.gz
-          rm -f /root/sahiy-docs.tar.gz
+          ssh -o StrictHostKeyChecking=no ${PROD_USER}@${PROD_HOST} << 'EOF'
+            set -e
+            mkdir -p /root/sahiy-docs
+            cd /root/sahiy-docs
+            rm -rf /root/sahiy-docs/src
+            tar -xzvf /root/sahiy-docs.tar.gz
+            rm -f /root/sahiy-docs.tar.gz
 
-          echo 'Building Docker image...'
-          docker build -t sahiy-docs .
+            echo 'Building Docker image...'
+            docker build -t sahiy-docs .
 
-          echo 'Restarting container...'
-          docker stop sahiy-docs || true
-          docker rm -f sahiy-docs || true
+            echo 'Restarting container...'
+            docker stop sahiy-docs || true
+            docker rm -f sahiy-docs || true
 
-          docker run -d -p 3006:3000 --name sahiy-docs --restart unless-stopped \
-            --network brend-market_brend-network \
-            --env-file /root/sahiy-docs/.env \
-            sahiy-docs
+            docker run -d -p 3006:3000 --name sahiy-docs --restart unless-stopped \
+              --network brend-market_brend-network \
+              --env-file /root/sahiy-docs/.env \
+              sahiy-docs
 
-          sleep 3
-          docker ps --filter name=sahiy-docs"
-
-          if [ -f ~/.ssh/id_rsa ] && [ -s ~/.ssh/id_rsa ] && ssh-keygen -l -f ~/.ssh/id_rsa >/dev/null 2>&1; then
-            ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${PROD_USER}@${PROD_HOST} "$DEPLOY_SCRIPT"
-          else
-            if [ -z "${PROD_PASS}" ]; then
-              echo "PROD_PASSWORD GitHub secret is required when PROD_SSH_KEY is unavailable."
-              exit 1
-            fi
-            sshpass -p "${PROD_PASS}" ssh -o StrictHostKeyChecking=no ${PROD_USER}@${PROD_HOST} "$DEPLOY_SCRIPT"
-          fi
+            sleep 3
+            docker ps --filter name=sahiy-docs
+          EOF
 
       - name: Post-deployment Health Check
         env:
@@ -95,8 +77,3 @@ jobs:
           sleep 5
           STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: docs.logistic.org.uz" http://${PROD_HOST}:3006 || true)
           echo "Production local port status code: $STATUS_CODE"
-
-      - name: Cleanup SSH Key
-        if: always()
-        run: |
-          rm -f ~/.ssh/id_rsa
