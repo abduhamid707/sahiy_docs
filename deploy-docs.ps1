@@ -2,7 +2,7 @@
 $SERVER_IP = "158.220.100.58"
 $SERVER_USER = "root"
 Write-Host "1. Loyiha fayllari siqilmoqda (Tar yaratilmoqda)..." -ForegroundColor Cyan
-tar --exclude=node_modules --exclude=.next --exclude=.git --exclude=*.tar.gz --exclude=.env --exclude=.env.local --exclude=.env.production --exclude=*firebase-adminsdk*.json --warning=no-file-changed -czf sahiy-docs.tar.gz .
+tar --exclude=node_modules --exclude=.next --exclude=.git --exclude=*.tar.gz --exclude=.env* --exclude=*firebase-adminsdk*.json -czf sahiy-docs.tar.gz .
 
 Write-Host "`n2. Fayllar Serverga ($SERVER_IP) yuborilmoqda..." -ForegroundColor Cyan
 scp sahiy-docs.tar.gz ${SERVER_USER}@${SERVER_IP}:/tmp/sahiy-docs.tar.gz
@@ -13,8 +13,9 @@ $DOCKER_CMD = "set -e && test -f /root/sahiy-docs/.env && " +
               "tar -xzf /tmp/sahiy-docs.tar.gz -C /root/sahiy-docs-release && rm -f /tmp/sahiy-docs.tar.gz && " +
               "cp /root/sahiy-docs/.env /root/sahiy-docs-release/.env && chmod 600 /root/sahiy-docs-release/.env && " +
               "cd /root/sahiy-docs-release && " +
-              "docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml config --quiet && " +
-              "docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml up -d --build --remove-orphans --wait --wait-timeout 180 && " +
+              "docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml build && " +
+              "(docker stop sahiy-docs 2>/dev/null || true) && (docker rm sahiy-docs 2>/dev/null || true) && " +
+              "docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml up -d --remove-orphans && " +
               "rm -rf /root/sahiy-docs-previous && mv /root/sahiy-docs /root/sahiy-docs-previous && " +
               "mv /root/sahiy-docs-release /root/sahiy-docs"
 

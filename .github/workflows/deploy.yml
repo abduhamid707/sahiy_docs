@@ -57,8 +57,9 @@ jobs:
           cp /root/sahiy-docs/.env /root/sahiy-docs-release/.env
           chmod 600 /root/sahiy-docs-release/.env
           cd /root/sahiy-docs-release
-          docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml config --quiet
-          docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml up -d --build --remove-orphans --wait --wait-timeout 180
+          docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml build
+          (docker stop sahiy-docs 2>/dev/null || true) && (docker rm sahiy-docs 2>/dev/null || true)
+          docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
           rm -rf /root/sahiy-docs-previous
           mv /root/sahiy-docs /root/sahiy-docs-previous
           mv /root/sahiy-docs-release /root/sahiy-docs
