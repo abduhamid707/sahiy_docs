@@ -1,7 +1,15 @@
 node_modules
 .next
 .git
-.env.local
+.env
+.env.*
+*.json.key
+sahiydocsfcm-*.json
+firebase-admin*.json
+public/uploads/*
+!public/uploads/.gitkeep
 Dockerfile
 .dockerignore
 README.md
+*.tar.gz
+scratch

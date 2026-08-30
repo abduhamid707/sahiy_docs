@@ -25,6 +25,29 @@ export function taskUrgencyScore(task: { deadlineAt: string | Date; status?: str
   return urgencyScore[urgency] * 10 + (priorityScore[task.priority || "NORMAL"] ?? 2);
 }
 
+export function taskMatchesFilter(
+  task: {
+    assignedTo?: { _id?: string } | string | null;
+    deadlineAt: string | Date;
+    status?: string;
+    priority?: string;
+    sentEvents?: unknown[];
+  },
+  filter: string,
+  currentUserId: string,
+  now = new Date(),
+) {
+  const urgency = taskUrgency(task.deadlineAt, task.status, now);
+  const assignedToId = typeof task.assignedTo === "string" ? task.assignedTo : task.assignedTo?._id;
+  if (filter === "MY") return assignedToId === currentUserId && urgency !== "DONE";
+  if (filter === "OVERDUE") return urgency === "OVERDUE";
+  if (filter === "HOUR") return urgency === "ONE_HOUR";
+  if (filter === "TODAY") return ["ONE_HOUR", "SIX_HOURS", "TODAY"].includes(urgency);
+  if (filter === "CRITICAL") return task.priority === "CRITICAL" && urgency !== "DONE";
+  if (filter === "REMINDED") return (task.sentEvents || []).length > 0 && urgency !== "DONE";
+  return urgency !== "DONE";
+}
+
 export function taskTimeLabel(deadlineAt: string | Date, status?: string, now = new Date()) {
   if (status === "DONE") return "Bajarildi";
   if (status === "CANCELLED") return "Bekor qilindi";

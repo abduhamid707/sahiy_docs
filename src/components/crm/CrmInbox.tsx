@@ -41,6 +41,7 @@ import {
 } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import CrmTaskOverview from "@/components/crm/CrmTaskOverview";
+import { taskMatchesFilter, taskTimeLabel, taskUrgency, taskUrgencyScore } from "@/lib/crmTasks";
 
 const filters = [
   ["ALL", "Barchasi"],
@@ -78,6 +79,7 @@ export default function CrmInbox({
   nowIso: string;
 }) {
   const [tickets, setTickets] = useState(initialTickets);
+  const [taskFilter, setTaskFilter] = useState("ALL");
   const [active, setActive] = useState("ALL");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("ALL");
@@ -101,6 +103,17 @@ export default function CrmInbox({
     }),
     [tickets, nowIso],
   );
+  const filteredTasks = useMemo(() => initialTasks
+    .filter((task: any) => taskMatchesFilter(task, taskFilter, currentUserId, new Date(nowIso)))
+    .sort((a: any, b: any) => taskUrgencyScore(a, new Date(nowIso)) - taskUrgencyScore(b, new Date(nowIso)) || new Date(a.deadlineAt).getTime() - new Date(b.deadlineAt).getTime()), [initialTasks, taskFilter, currentUserId, nowIso]);
+  const nearestTaskByTicket = useMemo(() => {
+    const map = new Map<string, any>();
+    for (const task of filteredTasks) {
+      const ticketId = typeof task.ticketId === "string" ? task.ticketId : task.ticketId?._id;
+      if (ticketId && !map.has(ticketId)) map.set(ticketId, task);
+    }
+    return map;
+  }, [filteredTasks]);
   const rows = useMemo(
     () =>
       tickets.filter((t) => {
@@ -123,6 +136,7 @@ export default function CrmInbox({
                     ? ["RESOLVED", "CLOSED"].includes(t.status)
                     : t.status === active);
         return (
+          (taskFilter === "ALL" || nearestTaskByTicket.has(t._id)) &&
           activeMatch &&
           (!q || searchable.includes(q) || compactSearchable.includes(compactQuery)) &&
           (category === "ALL" || t.category === category) &&
@@ -133,6 +147,23 @@ export default function CrmInbox({
               : t.assignedTo?._id === assignee)) &&
           (!date || new Date(t.createdAt).toISOString().slice(0, 10) === date)
         );
+      }).sort((a, b) => {
+        const aTask = nearestTaskByTicket.get(a._id);
+        const bTask = nearestTaskByTicket.get(b._id);
+        if (!aTask && !bTask) {
+          const aOpen = isOpenStatus(a.status);
+          const bOpen = isOpenStatus(b.status);
+          if (aOpen !== bOpen) return aOpen ? -1 : 1;
+          if (aOpen && bOpen) {
+            const aDeadline = a.deadlineAt ? new Date(a.deadlineAt).getTime() : Number.POSITIVE_INFINITY;
+            const bDeadline = b.deadlineAt ? new Date(b.deadlineAt).getTime() : Number.POSITIVE_INFINITY;
+            if (aDeadline !== bDeadline) return aDeadline - bDeadline;
+          }
+          return new Date(b.resolvedAt || b.lastInteractionAt || b.createdAt).getTime() - new Date(a.resolvedAt || a.lastInteractionAt || a.createdAt).getTime();
+        }
+        if (!aTask) return 1;
+        if (!bTask) return -1;
+        return taskUrgencyScore(aTask, new Date(nowIso)) - taskUrgencyScore(bTask, new Date(nowIso)) || new Date(aTask.deadlineAt).getTime() - new Date(bTask.deadlineAt).getTime();
       }),
     [
       tickets,
@@ -144,6 +175,8 @@ export default function CrmInbox({
       date,
       currentUserId,
       nowIso,
+      taskFilter,
+      nearestTaskByTicket,
     ],
   );
 
@@ -228,7 +261,7 @@ export default function CrmInbox({
           </Button>
         </div>
       </div>
-      <CrmTaskOverview initialTasks={initialTasks} initialNotifications={initialNotifications} currentUserId={currentUserId} nowIso={nowIso} />
+      <CrmTaskOverview initialTasks={initialTasks} initialNotifications={initialNotifications} currentUserId={currentUserId} nowIso={nowIso} onFilterChange={setTaskFilter} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {cards.map(([label, value, Icon, style]) => (
           <div key={label} className="rounded-2xl border bg-card p-4 shadow-sm">
@@ -358,8 +391,9 @@ export default function CrmInbox({
                   "Operator",
                   "Muhimlik",
                   "Status",
+                  "Yaqin task",
                   "Yaratilgan",
-                  "Ochiq vaqt",
+                  "Davomiyligi",
                 ].map((h) => (
                   <th key={h} className="px-4 py-3 font-bold">
                     {h}
@@ -368,7 +402,10 @@ export default function CrmInbox({
               </tr>
             </thead>
             <tbody>
-              {rows.map((t) => (
+              {rows.map((t) => {
+                const nearestTask = nearestTaskByTicket.get(t._id);
+                const urgency = nearestTask ? taskUrgency(nearestTask.deadlineAt, nearestTask.status, new Date(nowIso)) : "NORMAL";
+                return (
                 <tr
                   key={t._id}
                   className={cn(
@@ -394,6 +431,9 @@ export default function CrmInbox({
                   <td className="px-4 py-3">
                     <div className="flex min-w-32 flex-col gap-1"><Select value={t.status === "OPEN" ? "NEW" : t.status} onValueChange={(value) => value && updateTicket(t, "status", value)} disabled={updating === `${t._id}:status`}><SelectTrigger className={cn("h-8 w-32 rounded-md border-transparent px-2 text-[10px] font-bold hover:border-border", ["RESOLVED", "CLOSED"].includes(t.status) ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-foreground")}><SelectValue>{CRM_STATUS_LABELS[t.status]}</SelectValue></SelectTrigger><SelectContent>{CRM_STATUSES.map((value) => <SelectItem key={value} value={value}>{CRM_STATUS_LABELS[value]}</SelectItem>)}</SelectContent></Select>{isOverdue(t, nowIso) && <span className="px-2 text-[9px] font-bold text-rose-600">SLA kechikkan</span>}</div>
                   </td>
+                  <td className="min-w-40 px-4 py-3">
+                    {nearestTask ? <><Link href={`/crm/tickets/${t._id}`} className="block max-w-44 truncate text-xs font-semibold hover:text-blue-600" title={nearestTask.title}>{nearestTask.title}</Link><span className={cn("mt-1 inline-block text-[10px] font-bold", urgency === "OVERDUE" || urgency === "ONE_HOUR" ? "text-rose-600" : urgency === "SIX_HOURS" ? "text-orange-600" : urgency === "TODAY" ? "text-amber-600" : "text-muted-foreground")}>{taskTimeLabel(nearestTask.deadlineAt, nearestTask.status, new Date(nowIso))}</span></> : <span className="text-[10px] text-muted-foreground">Task yo‘q</span>}
+                  </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {formatUzDateTime(t.createdAt)}
                   </td>
@@ -401,13 +441,15 @@ export default function CrmInbox({
                     {formatDuration(t.createdAt, t.resolvedAt || nowIso)}
                   </td>
                 </tr>
-              ))}
+              );})}
             </tbody>
           </table>
         </div>
         <div className="divide-y lg:hidden">
-          {rows.map((t) => (
-            <div key={t._id} className="p-4">
+          {rows.map((t) => {
+            const nearestTask = nearestTaskByTicket.get(t._id);
+            const urgency = nearestTask ? taskUrgency(nearestTask.deadlineAt, nearestTask.status, new Date(nowIso)) : "NORMAL";
+            return <div key={t._id} className="p-4">
               <div className="flex justify-between gap-3"><div className="min-w-0"><Link href={`/crm/tickets/${t._id}`} className="text-xs font-bold text-blue-600 hover:underline">{ticketPublicId(t)}</Link><Link href={`/crm/tickets/${t._id}`} className="mt-1 block truncate font-semibold hover:text-blue-600">{t.callerName || "Noma'lum"}</Link><div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"><button onClick={() => copyValue(normalizeUzPhone(t.callerPhone), "Telefon raqami")} className="cursor-copy truncate text-left" title="Bosib bo‘shliqsiz nusxalash">{formatUzPhone(t.callerPhone)}</button><span className="truncate">· {t.orderId || "Order yo'q"}</span></div></div><span className="shrink-0 text-xs font-semibold text-muted-foreground">{formatDuration(t.createdAt, t.resolvedAt || nowIso)}</span></div>
               <Link href={`/crm/tickets/${t._id}`} className="mt-3 block line-clamp-2 text-sm">{t.problem}</Link>
               <div className={cn("mt-3 grid gap-2", canAssign ? "grid-cols-3" : "grid-cols-2")}>
@@ -416,8 +458,9 @@ export default function CrmInbox({
                 <Select value={t.status === "OPEN" ? "NEW" : t.status} onValueChange={(value) => value && updateTicket(t, "status", value)} disabled={updating === `${t._id}:status`}><SelectTrigger className="h-9 min-w-0 rounded-md px-2 text-[10px] font-bold"><SelectValue>{CRM_STATUS_LABELS[t.status]}</SelectValue></SelectTrigger><SelectContent>{CRM_STATUSES.map((value) => <SelectItem key={value} value={value}>{CRM_STATUS_LABELS[value]}</SelectItem>)}</SelectContent></Select>
               </div>
               {isOverdue(t, nowIso) && <p className="mt-2 text-[10px] font-bold text-rose-600">SLA muddati kechikkan</p>}
+              {nearestTask && <Link href={`/crm/tickets/${t._id}`} className={cn("mt-2 flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-xs", urgency === "OVERDUE" || urgency === "ONE_HOUR" ? "border-rose-300 bg-rose-500/10" : urgency === "SIX_HOURS" ? "border-orange-300 bg-orange-500/10" : "bg-muted/40")}><span className="truncate font-semibold">{nearestTask.title}</span><span className="shrink-0 font-bold">{taskTimeLabel(nearestTask.deadlineAt, nearestTask.status, new Date(nowIso))}</span></Link>}
             </div>
-          ))}
+          })}
         </div>
         {!rows.length && (
           <div className="px-4 py-16 text-center">

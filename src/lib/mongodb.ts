@@ -22,7 +22,6 @@ if (!cached) {
 }
 
 async function dbConnect() {
-  console.log("Using MONGODB_URI:", MONGODB_URI);
   if (cached!.conn) {
     return cached!.conn;
   }

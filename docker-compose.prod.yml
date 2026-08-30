@@ -1,0 +1,32 @@
+﻿services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sahiy-docs:latest
+    container_name: sahiy-docs
+    restart: unless-stopped
+    ports:
+      - "3006:3000"
+    env_file:
+      - .env.production
+    volumes:
+      # Uploaded media (Chat & CRM files) container yangilanganda yo'qolmasligi uchun
+      - sahiy_docs_uploads:/app/public/uploads
+    networks:
+      - brend-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/docs > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  sahiy_docs_uploads:
+    name: sahiy_docs_uploads
+
+networks:
+  brend-network:
+    name: brend-market_brend-network
+    external: true

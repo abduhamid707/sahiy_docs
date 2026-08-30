@@ -8,10 +8,14 @@ export async function register() {
   // Faqat asosiy Node.js server processida ishga tushadi (edge runtime'da emas)
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
-  const { startTelegramBot } = await import("@/lib/telegramBot");
-  startTelegramBot();
+  // Telegram botni yoqish (agar ENABLE_TELEGRAM_BOT=false bo'lmasa)
+  if (process.env.ENABLE_TELEGRAM_BOT !== "false") {
+    const { startTelegramBot } = await import("@/lib/telegramBot");
+    startTelegramBot();
+  }
 
-  if (!global.supportSweepIntervalStarted) {
+  // CRM eslatma sweep'ini yoqish (agar ENABLE_REMINDER_SWEEP=false bo'lmasa)
+  if (process.env.ENABLE_REMINDER_SWEEP !== "false" && !global.supportSweepIntervalStarted) {
     global.supportSweepIntervalStarted = true;
     const { runReminderSweep } = await import("@/lib/support/reminderSweep");
 

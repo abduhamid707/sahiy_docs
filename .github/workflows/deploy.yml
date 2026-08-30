@@ -42,7 +42,7 @@ jobs:
           APP_NAME: "sahiy-docs"
         run: |
           echo "Packaging codebase for server sync..."
-          tar --exclude=node_modules --exclude=.next --exclude=.git --exclude=*.tar.gz --exclude=.env.local --warning=no-file-changed -czvf /tmp/sahiy-docs.tar.gz .
+          tar --exclude=node_modules --exclude=.next --exclude=.git --exclude=*.tar.gz --exclude=.env.local --exclude=sahiydocsfcm-*.json --warning=no-file-changed -czvf /tmp/sahiy-docs.tar.gz .
 
           echo "Uploading package to server..."
           if [ -f ~/.ssh/id_rsa ] && [ -s ~/.ssh/id_rsa ] && ssh-keygen -l -f ~/.ssh/id_rsa >/dev/null 2>&1; then
@@ -69,6 +69,7 @@ jobs:
 
           docker run -d -p 3006:3000 --name sahiy-docs --restart unless-stopped \
             --network brend-market_brend-network \
+            -v sahiy_docs_uploads:/app/public/uploads \
             --env-file /root/sahiy-docs/.env \
             sahiy-docs
 
@@ -86,6 +87,12 @@ jobs:
           PROD_HOST: ${{ secrets.PROD_HOST || '158.220.100.58' }}
         run: |
           echo "Verifying server response..."
-          sleep 5
-          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: docs.logistic.org.uz" http://${PROD_HOST}:3006 || true)
+          sleep 6
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: docs.logistic.org.uz" http://${PROD_HOST}:3006 || echo "000")
           echo "Production local port status code: $STATUS_CODE"
+          if [[ "$STATUS_CODE" =~ ^(200|301|302|307|308)$ ]]; then
+            echo "Health check PASSED with HTTP $STATUS_CODE"
+          else
+            echo "Health check FAILED! Received HTTP $STATUS_CODE"
+            exit 1
+          fi

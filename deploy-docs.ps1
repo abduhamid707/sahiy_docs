@@ -1,13 +1,11 @@
-# Sahiy Docs ni serverga yuklash uchun avtomatik skript
+# Sahiy Docs ni serverga yuklash uchun avtomatik skript (SSH kalit orqali)
 $SERVER_IP = "158.220.100.58"
 $SERVER_USER = "root"
-$SERVER_PASS = "WeXw8VT3DO77iS5m0Hq6muT"
 $APP_NAME = "sahiy-docs"
 $PORT = "3006"
 
 Write-Host "1. Loyiha fayllari siqilmoqda (Tar yaratilmoqda)..." -ForegroundColor Cyan
-# Fayllarni siqish (node_modules, .next, .git dan tashqari, .env va JSON kalitlari bilan)
-tar --exclude=node_modules --exclude=.next --exclude=.git -czvf sahiy-docs.tar.gz .
+tar --exclude=node_modules --exclude=.next --exclude=.git --exclude=*.tar.gz --exclude=.env.local --warning=no-file-changed -czvf sahiy-docs.tar.gz .
 
 Write-Host "`n2. Fayllar Serverga ($SERVER_IP) yuborilmoqda..." -ForegroundColor Cyan
 scp -o StrictHostKeyChecking=no sahiy-docs.tar.gz ${SERVER_USER}@${SERVER_IP}:/root/sahiy-docs.tar.gz
@@ -19,6 +17,7 @@ $DOCKER_CMD = "mkdir -p /root/sahiy-docs && cd /root/sahiy-docs && " +
               "(docker stop ${APP_NAME} || true) && (docker rm -f ${APP_NAME} || true) && " +
               "docker run -d -p ${PORT}:3000 --name ${APP_NAME} --restart unless-stopped " +
               "--network brend-market_brend-network " +
+              "-v sahiy_docs_uploads:/app/public/uploads " +
               "--env-file /root/sahiy-docs/.env " +
               "${APP_NAME} && " +
               "sleep 3 && docker ps --filter name=${APP_NAME}"
