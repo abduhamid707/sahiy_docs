@@ -1,9 +1,10 @@
-export const TASK_STATUSES = ["TODO", "IN_PROGRESS", "DONE", "CANCELLED"] as const;
+export const TASK_STATUSES = ["TODO", "IN_PROGRESS", "PENDING_APPROVAL", "DONE", "CANCELLED"] as const;
 export const TASK_PRIORITIES = ["LOW", "NORMAL", "HIGH", "CRITICAL"] as const;
 
 export const TASK_STATUS_LABELS: Record<string, string> = {
   TODO: "Bajarish kerak",
   IN_PROGRESS: "Jarayonda",
+  PENDING_APPROVAL: "Tasdiq kutilmoqda",
   DONE: "Bajarildi",
   CANCELLED: "Bekor qilindi",
 };

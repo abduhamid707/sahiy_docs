@@ -67,6 +67,6 @@ jobs:
       - name: Production health check
         run: |
           sleep 8
-          STATUS_CODE=$(curl -sS -o /dev/null -w "%{http_code}" https://crm.sahiy.uz/api/health || echo "000")
+          STATUS_CODE=$(curl -sS -o /dev/null -w "%{http_code}" https://docs.logistic.org.uz/api/health || echo "000")
           echo "Production health status: $STATUS_CODE"
           test "$STATUS_CODE" = "200"

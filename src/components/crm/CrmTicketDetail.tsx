@@ -203,7 +203,7 @@ export default function CrmTicketDetail({
       </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
         <div className="space-y-4">
-          <CrmTaskPanel ticketId={ticket._id} initialTasks={initialTasks} agents={agents} currentUser={currentUser} nowIso={nowIso} />
+          <CrmTaskPanel ticketId={ticket._id} initialTasks={initialTasks} agents={agents} currentUser={currentUser} nowIso={nowIso} defaultAssigneeId={ticket.assignedTo?._id || ticket.assignedTo} />
           <Card className="rounded-2xl">
             <CardHeader className="border-b py-4">
               <CardTitle className="text-base">Conversation va tarix</CardTitle>

@@ -22,4 +22,4 @@ ssh ${SERVER_USER}@${SERVER_IP} "$DOCKER_CMD"
 
 Remove-Item sahiy-docs.tar.gz
 Write-Host "`n✅ SAHIY DOCS MUVAFFARIYATLI DEPLOY QILINDI!" -ForegroundColor Green
-Write-Host "Domen: https://crm.sahiy.uz" -ForegroundColor Yellow
+Write-Host "Domen: https://docs.logistic.org.uz" -ForegroundColor Yellow

@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { canSeeAllTickets } from "./permissions";
+import { canSeeAllTickets, isExecutive } from "./permissions";
 
 export function canUseCrm(user: any) {
-  return !!user && (user.role === "SUPPORT" || canSeeAllTickets(user));
+  return !!user && (isExecutive(user) || user.role === "SUPPORT" || canSeeAllTickets(user));
 }
 
 export function ticketScope(user: any) {

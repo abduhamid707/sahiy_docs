@@ -27,7 +27,8 @@ if (!admin.apps.length) {
         credential: admin.credential.cert(serviceAccount),
         storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
       });
-      console.log("Firebase Admin muvaffaqiyatli ishga tushdi (" + serviceAccount.project_id + ").");
+      const projectId = serviceAccount.projectId || (serviceAccount as any).project_id;
+      console.log("Firebase Admin muvaffaqiyatli ishga tushdi" + (projectId ? ` (${projectId}).` : "."));
     } else {
       console.warn("Firebase Admin: Service account topilmadi.");
     }

@@ -10,6 +10,8 @@ firebase-admin*.json
 *.pem
 public/uploads/*
 !public/uploads/.gitkeep
+!public/uploads/avatars/
+!public/uploads/avatars/**
 Dockerfile
 .dockerignore
 README.md

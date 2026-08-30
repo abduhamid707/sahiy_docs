@@ -1,20 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/auth";
 import dbConnect from "@/lib/mongodb";
 import { Ticket } from "@/models/Ticket";
 import { TicketMessage } from "@/models/TicketMessage";
 import { CRM_CATEGORIES, CRM_PRIORITIES, CRM_STATUSES, normalizeUzPhone } from "@/lib/crm";
 import { canUseCrm, escapeRegex, ticketScope } from "@/lib/support/access";
-import { canSeeAllTickets } from "@/lib/support/permissions";
+import { canSeeAllTickets, canMutateCrm } from "@/lib/support/permissions";
 import { notifyTicketAssigned } from "@/lib/support/notifications";
 import { createCrmNotification } from "@/lib/crmNotifications";
 
 const createSchema = z.object({
   customerName: z.string().trim().min(1).max(120),
   phone: z.string().trim().refine(value => normalizeUzPhone(value).replace(/\D/g, "").length === 12, "Telefon raqamini to‘liq kiriting"),
-  orderId: z.string().trim().max(100).optional().default(""),
+  orderId: z.string().trim().min(1, "Order ID majburiy").max(100),
   category: z.enum(CRM_CATEGORIES),
   description: z.string().trim().min(3).max(10000),
   assignedTo: z.string().trim().optional(),
@@ -24,19 +23,40 @@ const createSchema = z.object({
   attachment: z.object({ url: z.string().min(1), name: z.string().min(1), mimeType: z.string().optional(), size: z.number().optional() }).optional(),
 });
 
+import { getAuthUser } from "@/lib/auth-helper";
+import { getTashkentStartOfToday } from "@/lib/crm";
+
 export async function GET(req: Request) {
-  const session = await auth();
-  const user = session?.user as any;
+  const user = await getAuthUser(req);
+  if (!user) return NextResponse.json({ error: "Sessiya yaroqsiz" }, { status: 401 });
   if (!canUseCrm(user)) return NextResponse.json({ error: "Ruxsat yo'q" }, { status: 403 });
   await dbConnect();
 
   const params = new URL(req.url).searchParams;
   const and: any[] = [ticketScope(user)];
   const filter = params.get("filter");
-  if (filter === "NEW") and.push({ status: { $in: ["NEW", "OPEN"] } });
-  else if (filter === "OVERDUE") and.push({ status: { $nin: ["RESOLVED", "CLOSED"] }, deadlineAt: { $lt: new Date() } });
-  else if (filter === "CRITICAL") and.push({ priority: "CRITICAL", status: { $nin: ["RESOLVED", "CLOSED"] } });
-  else if (filter && filter !== "ALL") and.push({ status: filter });
+
+  if (filter === "OPEN") {
+    and.push({ status: { $nin: ["RESOLVED", "CLOSED"] } });
+  } else if (filter === "TODAY_NEW" || filter === "TODAY_CREATED" || filter === "NEW_TODAY") {
+    and.push({ createdAt: { $gte: getTashkentStartOfToday() } });
+  } else if (filter === "NEW") {
+    and.push({ status: { $in: ["NEW", "OPEN"] } });
+  } else if (filter === "IN_PROGRESS") {
+    and.push({ status: "IN_PROGRESS" });
+  } else if (filter === "WAITING" || filter === "WAITING_CLIENT") {
+    and.push({ status: { $in: ["WAITING", "WAITING_CLIENT"] } });
+  } else if (filter === "OVERDUE") {
+    and.push({ status: { $nin: ["RESOLVED", "CLOSED"] }, deadlineAt: { $lt: new Date(), $ne: null } });
+  } else if (filter === "CRITICAL") {
+    and.push({ priority: "CRITICAL", status: { $nin: ["RESOLVED", "CLOSED"] } });
+  } else if (filter === "UNASSIGNED") {
+    and.push({ status: { $nin: ["RESOLVED", "CLOSED"] }, $or: [{ assignedTo: null }, { assignedTo: { $exists: false } }] });
+  } else if (filter === "RESOLVED" || filter === "CLOSED") {
+    and.push({ status: { $in: ["RESOLVED", "CLOSED"] } });
+  } else if (filter && filter !== "ALL") {
+    and.push({ status: filter });
+  }
   const category = params.get("category");
   const priority = params.get("priority");
   const assignedTo = params.get("assignedTo");
@@ -57,9 +77,11 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await auth();
-  const user = session?.user as any;
-  if (!canUseCrm(user)) return NextResponse.json({ error: "Ruxsat yo'q" }, { status: 403 });
+  const user = await getAuthUser(req);
+  if (!user) return NextResponse.json({ error: "Sessiya yaroqsiz" }, { status: 401 });
+  if (!canMutateCrm(user)) {
+    return NextResponse.json({ error: "Rahbar murojaat yarata olmaydi (faqat kuzatish)" }, { status: 403 });
+  }
   const parsed = createSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || "Ma'lumotlar noto'g'ri" }, { status: 400 });
   await dbConnect();

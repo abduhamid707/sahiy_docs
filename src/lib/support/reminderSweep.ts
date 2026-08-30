@@ -4,6 +4,7 @@ import { Ticket } from "@/models/Ticket";
 import { sendTelegramMessage } from "@/lib/telegram";
 import { getTicketTier } from "@/lib/ticketStatus";
 import { runTaskReminderSweep } from "@/lib/crmTaskReminderSweep";
+import { generateDailyExecutiveReport } from "@/lib/dailyReport";
 
 // Uzoq vaqt OVERDUE holatida turgan ticket uchun qayta eslatish oralig'i
 const RENOTIFY_OVERDUE_AFTER_MS = 2 * 60 * 60 * 1000; // 2 soat
@@ -66,5 +67,14 @@ export async function runReminderSweep() {
   }
 
   const tasks = await runTaskReminderSweep();
+
+  // Kunlik rahbar hisoboti Toshkent vaqti bilan 10:00 dan keyingi birinchi sweepda yuboriladi.
+  const tashkentHour = (new Date().getUTCHours() + 5) % 24;
+  if (tashkentHour >= 10) {
+    generateDailyExecutiveReport().catch((err) =>
+      console.error("Daily executive report error:", err)
+    );
+  }
+
   return { checked: openTickets.length, warned, overdue, tasks };
 }

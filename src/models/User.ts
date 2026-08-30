@@ -10,6 +10,7 @@ const UserSchema = new Schema(
       enum: [
         "SUPER_ADMIN",
         "ADMIN",
+        "RAHBAR",
         "FRONTEND",
         "BACKEND",
         "DEVOPS",
@@ -24,8 +25,11 @@ const UserSchema = new Schema(
       default: "VIEWER",
     },
     isLead: { type: Boolean, default: false },
+    phone: { type: String },
+    telegramUsername: { type: String },
     fcmTokens: [String],
     image: { type: String },
+    lastActiveAt: { type: Date },
     telegram: {
       chatId: { type: String },
       linkCode: { type: String },

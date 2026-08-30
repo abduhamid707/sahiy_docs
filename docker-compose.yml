@@ -14,6 +14,8 @@ services:
     restart: always
     ports:
       - "3000:3000"
+    volumes:
+      - employee_uploads:/app/public/uploads
     environment:
       - MONGODB_URI=mongodb://mongodb:27017/sahiy_docs
       - AUTH_SECRET=sahiy_docs_secret_key_2026
@@ -23,3 +25,4 @@ services:
 
 volumes:
   mongodb_data:
+  employee_uploads:

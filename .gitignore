@@ -47,3 +47,9 @@ sahiy-team-firebase-adminsdk-fbsvc-9bd8bfb5d5.json
 sahiydocsfcm-firebase-adminsdk*.json
 *.tar.gz
 
+# Uploads
+/private_uploads/
+/public/uploads/*
+!/public/uploads/.gitkeep
+!/public/uploads/avatars/.gitkeep
+

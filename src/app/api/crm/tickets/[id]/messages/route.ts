@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auth } from "@/auth";
 import dbConnect from "@/lib/mongodb";
 import { Ticket } from "@/models/Ticket";
 import { TicketMessage } from "@/models/TicketMessage";
 import { CRM_MESSAGE_TYPES } from "@/lib/crm";
 import { canAccessTicket, canUseCrm } from "@/lib/support/access";
+import { canMutateCrm } from "@/lib/support/permissions";
+import { getAuthUser } from "@/lib/auth-helper";
 
 const schema = z.object({
   type: z.enum(CRM_MESSAGE_TYPES), body: z.string().trim().min(1).max(10000),
@@ -14,8 +15,9 @@ const schema = z.object({
 });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth(); const user = session?.user as any;
-  if (!canUseCrm(user)) return NextResponse.json({ error: "Ruxsat yo'q" }, { status: 403 });
+  const user = await getAuthUser(req);
+  if (!user) return NextResponse.json({ error: "Sessiya yaroqsiz" }, { status: 401 });
+  if (!canMutateCrm(user)) return NextResponse.json({ error: "Rahbar izoh yozolmaydi (faqat kuzatish)" }, { status: 403 });
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || "Xabar noto'g'ri" }, { status: 400 });
   await dbConnect(); const { id } = await params;

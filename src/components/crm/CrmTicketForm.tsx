@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/set-state-in-effect, react-hooks/purity */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -11,7 +11,6 @@ import {
   Loader2,
   Plus,
   Save,
-  Search,
   UserRoundSearch,
   X,
 } from "lucide-react";
@@ -79,6 +78,7 @@ export default function CrmTicketForm({
   const [attachment, setAttachment] = useState<any>(null);
   const [lookup, setLookup] = useState("");
   const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [results, setResults] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [form, setForm] = useState({
@@ -159,32 +159,42 @@ export default function CrmTicketForm({
       set("deadlineAt", "");
     }
   };
-  const findCustomer = async () => {
-    if (lookup.trim().length < 2) {
-      toast.error(
-        "Telefon, Order ID yoki ismning kamida 2 ta belgisini kiriting",
-      );
-      return;
-    }
+  const findCustomer = useCallback(async (term: string, signal: AbortSignal) => {
     setSearching(true);
     try {
       const res = await fetch(
-        `/api/crm/customers/search?q=${encodeURIComponent(lookup.trim())}`,
+        `/api/crm/customers/search?q=${encodeURIComponent(term)}`,
+        { signal },
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setResults(data);
-      if (!data.length)
-        toast.info("Mavjud mijoz topilmadi — yangi ma'lumot kiriting");
+      setHasSearched(true);
     } catch (e: any) {
-      toast.error(e.message || "Qidiruv ishlamadi");
+      if (e.name !== "AbortError") toast.error(e.message || "Qidiruv ishlamadi");
     } finally {
-      setSearching(false);
+      if (!signal.aborted) setSearching(false);
     }
-  };
+  }, []);
+  useEffect(() => {
+    const term = lookup.trim();
+    if (term.length < 2) {
+      setResults([]);
+      setHasSearched(false);
+      setSearching(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => findCustomer(term, controller.signal), 300);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [lookup, findCustomer]);
   const chooseCustomer = (customer: any) => {
     setSelectedCustomer(customer);
     setResults([]);
+    setHasSearched(false);
     setLookup("");
     setForm((prev) => ({
       ...prev,
@@ -271,36 +281,16 @@ export default function CrmTicketForm({
           <CardContent className="grid gap-5 p-5 sm:grid-cols-2 sm:p-7">
             <div className="space-y-2 sm:col-span-2">
               <Label>Avval mavjud mijoz yoki buyurtmani toping</Label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <div className="relative flex-1">
+              <div className="relative">
                   <UserRoundSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={lookup}
                     onChange={(e) => setLookup(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        findCustomer();
-                      }
-                    }}
+                    onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
                     placeholder="Telefon, Order ID yoki mijoz ismi..."
-                    className="h-11 rounded-xl pl-9"
+                    className="h-11 rounded-xl px-9"
                   />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={searching}
-                  onClick={findCustomer}
-                  className="h-11 rounded-xl px-4"
-                >
-                  {searching ? (
-                    <Loader2 className="animate-spin" />
-                  ) : (
-                    <Search />
-                  )}{" "}
-                  Qidirish
-                </Button>
+                  {searching && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />}
               </div>
               {!!results.length && (
                 <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border bg-background p-2">
@@ -330,6 +320,11 @@ export default function CrmTicketForm({
                     </button>
                   ))}
                 </div>
+              )}
+              {hasSearched && !searching && results.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Mavjud mijoz topilmadi — yangi ma’lumotlarni kiriting.
+                </p>
               )}
               {selectedCustomer && (
                 <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 dark:border-blue-900 dark:bg-blue-950/30">
@@ -403,8 +398,9 @@ export default function CrmTicketForm({
               />
             </div>
             <div className="space-y-2">
-              <Label>Order ID</Label>
+              <Label>Order ID *</Label>
               <Input
+                required
                 value={form.orderId}
                 onChange={(e) => set("orderId", e.target.value)}
                 placeholder="Masalan: DG-10482"

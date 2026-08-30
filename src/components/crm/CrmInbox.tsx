@@ -38,10 +38,14 @@ import {
   isOverdue,
   ticketPublicId,
   uzDateKey,
+  computeTicketStats,
 } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import CrmTaskOverview from "@/components/crm/CrmTaskOverview";
 import { taskMatchesFilter, taskTimeLabel, taskUrgency, taskUrgencyScore } from "@/lib/crmTasks";
+
+import CreateTicketModal from "@/components/crm/CreateTicketModal";
+import ExecutiveReportModal from "@/components/crm/ExecutiveReportModal";
 
 const filters = [
   ["ALL", "Barchasi"],
@@ -87,21 +91,19 @@ export default function CrmInbox({
   const [assignee, setAssignee] = useState("ALL");
   const [date, setDate] = useState("");
   const [updating, setUpdating] = useState("");
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [executiveReportOpen, setExecutiveReportOpen] = useState(false);
+  const stats = useMemo(() => computeTicketStats(tickets, nowIso), [tickets, nowIso]);
   const summary = useMemo(
     () => ({
-      open: tickets.filter((t) => isOpenStatus(t.status)).length,
-      newToday: tickets.filter(
-        (t) => uzDateKey(t.createdAt) === uzDateKey(nowIso),
-      ).length,
-      inProgress: tickets.filter((t) => t.status === "IN_PROGRESS")
-        .length,
-      waiting: tickets.filter((t) => t.status === "WAITING").length,
-      overdue: tickets.filter((t) => isOverdue(t, nowIso)).length,
-      critical: tickets.filter(
-        (t) => t.priority === "CRITICAL" && isOpenStatus(t.status),
-      ).length,
+      open: stats.openCount,
+      newToday: stats.createdTodayCount,
+      inProgress: stats.inProgressCount,
+      waiting: stats.waitingCount,
+      overdue: stats.overdueCount,
+      critical: stats.criticalCount,
     }),
-    [tickets, nowIso],
+    [stats]
   );
   const filteredTasks = useMemo(() => initialTasks
     .filter((task: any) => taskMatchesFilter(task, taskFilter, currentUserId, new Date(nowIso)))
@@ -124,7 +126,11 @@ export default function CrmInbox({
         const compactSearchable = searchable.replace(/[\s()+-]/g, "");
         const activeMatch =
           active === "ALL" ||
-          (active === "MY"
+          (active === "OPEN"
+            ? isOpenStatus(t.status)
+            : active === "TODAY_CREATED"
+              ? uzDateKey(t.createdAt) === uzDateKey(nowIso)
+              : active === "MY"
             ? t.assignedTo?._id === currentUserId && isOpenStatus(t.status)
             : active === "NEW"
               ? ["NEW", "OPEN"].includes(t.status)
@@ -132,6 +138,8 @@ export default function CrmInbox({
                 ? isOverdue(t, nowIso)
                 : active === "CRITICAL"
                   ? t.priority === "CRITICAL" && isOpenStatus(t.status)
+                  : active === "WAITING"
+                    ? ["WAITING", "WAITING_CLIENT"].includes(t.status)
                   : active === "CLOSED"
                     ? ["RESOLVED", "CLOSED"].includes(t.status)
                     : t.status === active);
@@ -206,27 +214,30 @@ export default function CrmInbox({
   };
 
   const cards = [
-    ["Ochiq", summary.open, MessageSquareText, "text-blue-600 bg-blue-500/10"],
+    ["Ochiq", summary.open, MessageSquareText, "text-blue-600 bg-blue-500/10", "OPEN"],
     [
       "Bugun yangi",
       summary.newToday,
       Inbox,
       "text-violet-600 bg-violet-500/10",
+      "TODAY_CREATED",
     ],
     [
       "Jarayonda",
       summary.inProgress,
       UserRoundCheck,
       "text-cyan-600 bg-cyan-500/10",
+      "IN_PROGRESS",
     ],
-    ["Kutilmoqda", summary.waiting, Clock3, "text-amber-600 bg-amber-500/10"],
+    ["Kutilmoqda", summary.waiting, Clock3, "text-amber-600 bg-amber-500/10", "WAITING"],
     [
       "Kechikkan",
       summary.overdue,
       AlertTriangle,
       "text-rose-600 bg-rose-500/10",
+      "OVERDUE",
     ],
-    ["Kritik", summary.critical, Flame, "text-red-600 bg-red-500/10"],
+    ["Kritik", summary.critical, Flame, "text-red-600 bg-red-500/10", "CRITICAL"],
   ] as const;
 
   return (
@@ -244,6 +255,16 @@ export default function CrmInbox({
           </p>
         </div>
         <div className="flex gap-2">
+          {canAssign && (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 rounded-xl border-blue-500/30 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30"
+              onClick={() => setExecutiveReportOpen(true)}
+            >
+              Rahbarga hisobot
+            </Button>
+          )}
           <Button
             nativeButton={false}
             variant="outline"
@@ -253,18 +274,49 @@ export default function CrmInbox({
             Analytics
           </Button>
           <Button
-            nativeButton={false}
+            type="button"
             className="h-10 rounded-xl bg-brand-blue text-white hover:bg-brand-blue-hover"
-            render={<Link href="/crm/new" />}
+            onClick={() => setCreateModalOpen(true)}
           >
-            <Plus /> Ticket qo‘shish
+            <Plus className="w-4 h-4 mr-1" /> Ticket qo‘shish
           </Button>
         </div>
       </div>
-      <CrmTaskOverview initialTasks={initialTasks} initialNotifications={initialNotifications} currentUserId={currentUserId} nowIso={nowIso} onFilterChange={setTaskFilter} />
+      <CreateTicketModal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        agents={agents}
+        canAssign={canAssign}
+        onSuccess={(newTicket) => {
+          setTickets((prev) => [newTicket, ...prev]);
+        }}
+      />
+      <ExecutiveReportModal
+        isOpen={executiveReportOpen}
+        onClose={() => setExecutiveReportOpen(false)}
+      />
+      <CrmTaskOverview initialTasks={initialTasks} initialNotifications={initialNotifications} currentUserId={currentUserId} nowIso={nowIso} activeFilter={taskFilter} onFilterChange={setTaskFilter} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-        {cards.map(([label, value, Icon, style]) => (
-          <div key={label} className="rounded-2xl border bg-card p-4 shadow-sm">
+        {cards.map(([label, value, Icon, style, filterKey]) => (
+          <button
+            type="button"
+            key={label}
+            aria-pressed={active === filterKey}
+            onClick={() => {
+              setActive(filterKey);
+              setTaskFilter("ALL");
+              setSearch("");
+              setCategory("ALL");
+              setPriority("ALL");
+              setAssignee("ALL");
+              setDate("");
+              document.getElementById("crm-ticket-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+            className={cn(
+              "rounded-2xl border bg-card p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
+              active === filterKey && "border-blue-500 ring-2 ring-blue-500/20",
+            )}
+          >
             <div
               className={cn(
                 "mb-3 flex h-9 w-9 items-center justify-center rounded-xl",
@@ -275,10 +327,10 @@ export default function CrmInbox({
             </div>
             <p className="text-2xl font-bold">{value}</p>
             <p className="text-xs text-muted-foreground">{label}</p>
-          </div>
+          </button>
         ))}
       </div>
-      <div className="rounded-2xl border bg-card shadow-sm">
+      <div id="crm-ticket-table" className="scroll-mt-24 rounded-2xl border bg-card shadow-sm">
         <div className="border-b p-3 sm:p-4">
           <div className="flex gap-2 overflow-x-auto pb-1">
             {filters.map(([key, label]) => (

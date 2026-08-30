@@ -3,7 +3,7 @@ import { CrmNotification } from "@/models/CrmNotification";
 import { User } from "@/models/User";
 import { adminMessaging } from "@/lib/firebase-admin";
 
-type NotificationKind = "TICKET_ASSIGNED" | "TASK_ASSIGNED" | "ONE_HOUR_LEFT" | "FIFTEEN_MINUTES_LEFT" | "OVERDUE" | "CRITICAL";
+type NotificationKind = "TICKET_ASSIGNED" | "TASK_ASSIGNED" | "TASK_APPROVAL_REQUESTED" | "TASK_APPROVED" | "TASK_REJECTED" | "ONE_HOUR_LEFT" | "FIFTEEN_MINUTES_LEFT" | "OVERDUE" | "CRITICAL" | "EXECUTIVE_REPORT";
 
 export async function createCrmNotification(input: {
   userId: string;
@@ -13,10 +13,20 @@ export async function createCrmNotification(input: {
   title: string;
   body: string;
   link?: string;
+  metadata?: Record<string, unknown>;
+  replaceExisting?: boolean;
 }) {
   let notification;
   try {
-    notification = await CrmNotification.create({ ...input, link: input.link || "/crm" });
+    const { replaceExisting, ...notificationInput } = input;
+    if (replaceExisting && input.taskId) {
+      await CrmNotification.deleteMany({
+        taskId: input.taskId,
+        kind: input.kind,
+        userId: input.userId,
+      });
+    }
+    notification = await CrmNotification.create({ ...notificationInput, link: input.link || "/crm" });
   } catch (error: any) {
     if (error?.code === 11000) return null;
     throw error;
