@@ -6,6 +6,8 @@ node_modules
 *.json.key
 sahiydocsfcm-*.json
 firebase-admin*.json
+*firebase-adminsdk*.json
+*.pem
 public/uploads/*
 !public/uploads/.gitkeep
 Dockerfile

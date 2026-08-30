@@ -1,4 +1,4 @@
-name: Deploy Sahiy Docs to Production
+name: Deploy Sahiy CRM to Production
 
 on:
   push:
@@ -8,91 +8,65 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: sahiy-docs-prod
+  group: sahiy-crm-prod
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Build and Deploy to Production Server
+    name: Build and deploy production container
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup SSH Tools & Known Hosts
+      - name: Configure SSH
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
         run: |
-          sudo apt-get update && sudo apt-get install -y sshpass
+          test -n "$PROD_HOST" || (echo "PROD_HOST secret is required" && exit 1)
+          test -n "$PROD_SSH_KEY" || (echo "PROD_SSH_KEY secret is required" && exit 1)
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          ssh-keyscan -H ${{ secrets.PROD_HOST || '158.220.100.58' }} >> ~/.ssh/known_hosts
+          printf "%s\n" "$PROD_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$PROD_HOST" >> ~/.ssh/known_hosts
 
-          # If PROD_SSH_KEY is defined and not empty, configure it
-          if [ -n "${{ secrets.PROD_SSH_KEY }}" ]; then
-            printf "%s\n" "${{ secrets.PROD_SSH_KEY }}" > ~/.ssh/id_rsa
-            chmod 600 ~/.ssh/id_rsa
-          fi
-
-      - name: Sync code to server and Deploy with Docker
+      - name: Package and upload release
         env:
-          PROD_HOST: ${{ secrets.PROD_HOST || '158.220.100.58' }}
-          PROD_USER: ${{ secrets.PROD_USER || 'root' }}
-          PROD_PASS: ${{ secrets.PROD_PASSWORD || 'WeXw8VT3DO77iS5m0Hq6muT' }}
-          PORT: "3006"
-          APP_NAME: "sahiy-docs"
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
         run: |
-          echo "Packaging codebase for server sync..."
-          tar --exclude=node_modules --exclude=.next --exclude=.git --exclude=*.tar.gz --exclude=.env.local --exclude=sahiydocsfcm-*.json --warning=no-file-changed -czvf /tmp/sahiy-docs.tar.gz .
+          test -n "$PROD_USER" || (echo "PROD_USER secret is required" && exit 1)
+          tar --exclude=node_modules --exclude=.next --exclude=.git --exclude=*.tar.gz --exclude='.env*' --exclude='*firebase-adminsdk*.json' --warning=no-file-changed -czf /tmp/sahiy-docs.tar.gz .
+          scp -i ~/.ssh/id_rsa /tmp/sahiy-docs.tar.gz ${PROD_USER}@${PROD_HOST}:/tmp/sahiy-docs.tar.gz
 
-          echo "Uploading package to server..."
-          if [ -f ~/.ssh/id_rsa ] && [ -s ~/.ssh/id_rsa ] && ssh-keygen -l -f ~/.ssh/id_rsa >/dev/null 2>&1; then
-            scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa /tmp/sahiy-docs.tar.gz ${PROD_USER}@${PROD_HOST}:/root/sahiy-docs.tar.gz
-          else
-            sshpass -p "${PROD_PASS}" scp -o StrictHostKeyChecking=no /tmp/sahiy-docs.tar.gz ${PROD_USER}@${PROD_HOST}:/root/sahiy-docs.tar.gz
-          fi
+      - name: Deploy with Docker Compose
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
+        run: |
+          ssh -i ~/.ssh/id_rsa ${PROD_USER}@${PROD_HOST} 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          test -f /root/sahiy-docs/.env || (echo 'Server .env file is missing' && exit 1)
+          rm -rf /root/sahiy-docs-release
+          mkdir -p /root/sahiy-docs-release
+          tar -xzf /tmp/sahiy-docs.tar.gz -C /root/sahiy-docs-release
           rm -f /tmp/sahiy-docs.tar.gz
+          cp /root/sahiy-docs/.env /root/sahiy-docs-release/.env
+          chmod 600 /root/sahiy-docs-release/.env
+          cd /root/sahiy-docs-release
+          docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml config --quiet
+          docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml up -d --build --remove-orphans --wait --wait-timeout 180
+          rm -rf /root/sahiy-docs-previous
+          mv /root/sahiy-docs /root/sahiy-docs-previous
+          mv /root/sahiy-docs-release /root/sahiy-docs
+          REMOTE
 
-          echo "Executing Docker build and restart on server..."
-          DEPLOY_CMD="set -e
-          mkdir -p /root/sahiy-docs
-          cd /root/sahiy-docs
-          rm -rf /root/sahiy-docs/src
-          tar -xzvf /root/sahiy-docs.tar.gz
-          rm -f /root/sahiy-docs.tar.gz
-
-          echo 'Building Docker image...'
-          docker build -t sahiy-docs .
-
-          echo 'Restarting container...'
-          docker stop sahiy-docs || true
-          docker rm -f sahiy-docs || true
-
-          docker run -d -p 3006:3000 --name sahiy-docs --restart unless-stopped \
-            --network brend-market_brend-network \
-            -v sahiy_docs_uploads:/app/public/uploads \
-            --env-file /root/sahiy-docs/.env \
-            sahiy-docs
-
-          sleep 3
-          docker ps --filter name=sahiy-docs"
-
-          if [ -f ~/.ssh/id_rsa ] && [ -s ~/.ssh/id_rsa ] && ssh-keygen -l -f ~/.ssh/id_rsa >/dev/null 2>&1; then
-            ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${PROD_USER}@${PROD_HOST} "$DEPLOY_CMD"
-          else
-            sshpass -p "${PROD_PASS}" ssh -o StrictHostKeyChecking=no ${PROD_USER}@${PROD_HOST} "$DEPLOY_CMD"
-          fi
-
-      - name: Post-deployment Health Check
-        env:
-          PROD_HOST: ${{ secrets.PROD_HOST || '158.220.100.58' }}
+      - name: Production health check
         run: |
-          echo "Verifying server response..."
-          sleep 6
-          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: docs.logistic.org.uz" http://${PROD_HOST}:3006 || echo "000")
-          echo "Production local port status code: $STATUS_CODE"
-          if [[ "$STATUS_CODE" =~ ^(200|301|302|307|308)$ ]]; then
-            echo "Health check PASSED with HTTP $STATUS_CODE"
-          else
-            echo "Health check FAILED! Received HTTP $STATUS_CODE"
-            exit 1
-          fi
+          sleep 8
+          STATUS_CODE=$(curl -sS -o /dev/null -w "%{http_code}" https://crm.sahiy.uz/api/health || echo "000")
+          echo "Production health status: $STATUS_CODE"
+          test "$STATUS_CODE" = "200"

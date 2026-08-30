@@ -74,7 +74,7 @@ jobs:
         run: |
           echo "Verifying server response..."
           sleep 5
-          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://docs.logistic.org.uz || true)
+          STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://crm.sahiy.uz || true)
           echo "Production URL status code: $STATUS_CODE"
 
       - name: Cleanup SSH Key
@@ -85,4 +85,3 @@ jobs:
 
 fs.writeFileSync(path.join(dir, "deploy.yml"), content);
 console.log("Successfully created .github/workflows/deploy.yml");
-
