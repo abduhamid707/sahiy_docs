@@ -6,8 +6,9 @@ const TicketSchema = new Schema(
   {
     ticketNumber: { type: String, index: true, unique: true, sparse: true },
     mockBatch: { type: String, index: true },
+    callerId: { type: String, trim: true, index: true },
     callerName: { type: String, trim: true },
-    callerPhone: { type: String, required: true, trim: true, index: true },
+    callerPhone: { type: String, trim: true, index: true },
     orderId: { type: String, trim: true, index: true },
     problem: { type: String, required: true, trim: true },
     notes: String,
@@ -38,6 +39,6 @@ const TicketSchema = new Schema(
 
 TicketSchema.index({ assignedTo: 1, status: 1 });
 TicketSchema.index({ priority: 1, deadlineAt: 1 });
-TicketSchema.index({ callerName: "text", callerPhone: "text", orderId: "text", ticketNumber: "text", problem: "text" });
+TicketSchema.index({ callerId: "text", callerName: "text", callerPhone: "text", orderId: "text", ticketNumber: "text", problem: "text" });
 
 export const Ticket = models.Ticket || model("Ticket", TicketSchema);

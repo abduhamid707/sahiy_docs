@@ -6,6 +6,7 @@ import {
   UploadCloud,
   FileText,
   User,
+  Phone,
   Package,
   Clock,
   Calendar,
@@ -55,6 +56,8 @@ export default function CreateTicketModal({
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
   const [slaPresets, setSlaPresets] = useState<SlaPreset[]>(INITIAL_SLA_PRESETS);
+  const [customSlaHours, setCustomSlaHours] = useState("");
+  const [slaPreviewHours, setSlaPreviewHours] = useState<number | null>(null);
 
   const toLocalDatetime = (d: Date) => {
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -62,6 +65,7 @@ export default function CreateTicketModal({
   };
 
   const [form, setForm] = useState({
+    customerId: "",
     customerName: "",
     phone: "",
     orderId: "",
@@ -153,6 +157,8 @@ export default function CreateTicketModal({
       };
       const updated = [...slaPresets, newPreset];
       savePresets(updated);
+      setCustomSlaHours("");
+      setSlaPreviewHours(hours);
       const nextDate = new Date(Date.now() + hours * 3600000);
       setForm({
         ...form,
@@ -222,6 +228,7 @@ export default function CreateTicketModal({
   useEffect(() => {
     if (isOpen) {
       setForm({
+        customerId: "",
         customerName: "",
         phone: "",
         orderId: "",
@@ -234,6 +241,8 @@ export default function CreateTicketModal({
         deadlineAt: toLocalDatetime(new Date(Date.now() + 24 * 3600000)),
       });
       setAttachments([]);
+      setCustomSlaHours("");
+      setSlaPreviewHours(null);
       setFormError("");
     }
   }, [isOpen]);
@@ -275,8 +284,8 @@ export default function CreateTicketModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
-    if (!form.phone.trim()) {
-      const message = "Mijoz ID kiritilishi shart";
+    if (!form.customerId.trim()) {
+      const message = "User ID kiritilishi shart";
       setFormError(message);
       return toast.error(message);
     }
@@ -295,6 +304,7 @@ export default function CreateTicketModal({
 
     try {
       const payload = {
+        customerId: form.customerId,
         customerName: form.customerName,
         phone: form.phone,
         orderId: form.orderId,
@@ -341,16 +351,29 @@ export default function CreateTicketModal({
 
         <form onSubmit={handleSubmit} className="p-5 space-y-5 overflow-y-auto max-h-[80vh]">
           {/* Client Info */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Mijoz ID *</Label>
+              <Label className="text-xs font-semibold">User ID *</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   required
+                  value={form.customerId}
+                  onChange={(e) => setForm({ ...form, customerId: e.target.value })}
+                  placeholder="User ID"
+                  className="pl-9 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Telefon raqami</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="ID yoki login"
+                  placeholder="+998 90 123 45 67"
                   className="pl-9 text-sm"
                 />
               </div>
@@ -458,12 +481,44 @@ export default function CreateTicketModal({
               <label className="relative flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold text-foreground hover:bg-muted">
                 <Calendar className="size-3.5 text-muted-foreground" />
                 {formatDisplayDateTime(form.deadlineAt)}
-                <input type="datetime-local" value={form.deadlineAt} onChange={(e) => setForm({ ...form, deadlineAt: e.target.value })} className="absolute inset-0 cursor-pointer opacity-0" aria-label="Hal qilish muddatini o'zgartirish" />
+                <input type="datetime-local" value={form.deadlineAt} onChange={(e) => { setCustomSlaHours(""); setSlaPreviewHours(null); setForm({ ...form, deadlineAt: e.target.value }); }} className="absolute inset-0 cursor-pointer opacity-0" aria-label="Hal qilish muddatini o'zgartirish" />
               </label>
             </div>
 
             {/* Main Interactive Row: Prominent Input + || Divider + Preset Chips */}
             <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              <div className="flex items-center gap-2">
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={customSlaHours}
+                  placeholder="Soat"
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "");
+                    setCustomSlaHours(digits);
+                    const hours = Number(digits);
+                    if (!digits || hours < 1) {
+                      setSlaPreviewHours(null);
+                      return;
+                    }
+                    setSlaPreviewHours(hours);
+                    setForm({
+                      ...form,
+                      deadlineHours: hours,
+                      deadlineAt: toLocalDatetime(new Date(Date.now() + hours * 3600000)),
+                    });
+                  }}
+                  className="h-8 w-20 text-center text-sm font-semibold placeholder:font-normal"
+                  aria-label="SLA muddati soatlarda"
+                />
+                {slaPreviewHours !== null && (
+                  <span className="whitespace-nowrap text-xs font-medium text-muted-foreground" aria-live="polite">
+                    {slaPreviewHours} soatda hal qilinadi
+                  </span>
+                )}
+              </div>
+
               {/* 2. Visual Divider || (only if presets exist) */}
               {slaPresets.length > 0 && (
                 <div className="flex items-center gap-1 px-1 py-1 text-border/80 select-none">
@@ -483,6 +538,8 @@ export default function CreateTicketModal({
                     <button
                       type="button"
                       onClick={() => {
+                        setCustomSlaHours("");
+                        setSlaPreviewHours(preset.hours);
                         const nextDate = new Date(Date.now() + preset.hours * 3600000);
                         setForm({
                           ...form,
