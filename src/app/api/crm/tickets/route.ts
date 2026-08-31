@@ -11,9 +11,9 @@ import { notifyTicketAssigned } from "@/lib/support/notifications";
 import { createCrmNotification } from "@/lib/crmNotifications";
 
 const createSchema = z.object({
-  customerName: z.string().trim().min(1).max(120),
-  phone: z.string().trim().refine(value => normalizeUzPhone(value).replace(/\D/g, "").length === 12, "Telefon raqamini to‘liq kiriting"),
-  orderId: z.string().trim().min(1, "Order ID majburiy").max(100),
+  customerName: z.string().trim().max(120).optional().or(z.literal("")),
+  phone: z.string().trim().min(1, "Mijoz ID majburiy").max(100),
+  orderId: z.string().trim().max(100).optional().or(z.literal("")),
   category: z.enum(CRM_CATEGORIES),
   description: z.string().trim().min(3).max(10000),
   assignedTo: z.string().trim().optional(),
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
   const assignedTo = canSeeAllTickets(user) ? (data.assignedTo || undefined) : user.id;
   const deadlineAt = data.deadlineAt ? new Date(data.deadlineAt) : new Date(Date.now() + (data.priority === "CRITICAL" ? 4 : data.priority === "HIGH" ? 12 : 24) * 3600000);
   const ticket = await Ticket.create({
-    callerName: data.customerName, callerPhone: normalizeUzPhone(data.phone), orderId: data.orderId || undefined,
+    callerName: data.customerName, callerPhone: data.phone, orderId: data.orderId || undefined,
     category: data.category, problem: data.description, priority: data.priority, status: data.status,
     assignedTo, createdBy: user.id, deadlineAt, lastInteractionAt: new Date(),
     attachments: data.attachment ? [data.attachment] : [], origin: "MANUAL", channel: "MANUAL",

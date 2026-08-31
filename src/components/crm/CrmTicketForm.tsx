@@ -376,37 +376,34 @@ export default function CrmTicketForm({
               )}
             </div>
             <div className="space-y-2">
-              <Label>Mijoz *</Label>
-              <Input
-                required
-                value={form.customerName}
-                onChange={(e) => set("customerName", e.target.value)}
-                placeholder="Ism va familiya"
-                className="h-11 rounded-xl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Telefon *</Label>
-              <Input
-                required
-                type="tel"
-                inputMode="numeric"
-                maxLength={17}
-                value={form.phone}
-                onChange={(e) => set("phone", formatUzPhone(e.target.value))}
-                className="h-11 rounded-xl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Order ID *</Label>
-              <Input
-                required
-                value={form.orderId}
-                onChange={(e) => set("orderId", e.target.value)}
-                placeholder="Masalan: DG-10482"
-                className="h-11 rounded-xl"
-              />
-            </div>
+                <Label>Mijoz ID *</Label>
+                <Input
+                  required
+                  value={form.phone}
+                  onChange={(e) => set("phone", e.target.value)}
+                  placeholder="ID yoki login"
+                  className="h-11 rounded-xl"
+                  dir="ltr"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Mijoz ismi</Label>
+                <Input
+                  value={form.customerName}
+                  onChange={(e) => set("customerName", e.target.value)}
+                  placeholder="Ism va familiya (Ixtiyoriy)"
+                  className="h-11 rounded-xl"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Order ID</Label>
+                <Input
+                  value={form.orderId}
+                  onChange={(e) => set("orderId", e.target.value)}
+                  placeholder="DG0099993"
+                  className="h-11 rounded-xl"
+                />
+              </div>
             <div className="space-y-2">
               <Label>Muammo kategoriyasi *</Label>
               <Select

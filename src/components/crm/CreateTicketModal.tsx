@@ -1,19 +1,17 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState, useRef } from "react";
-import { createPortal } from "react-dom";
 import {
   X,
   UploadCloud,
   FileText,
   User,
-  Phone,
   Package,
   Clock,
   AlertTriangle,
   Loader2,
-  Check,
   Paperclip,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -27,13 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   CRM_CATEGORIES,
   CRM_CATEGORY_LABELS,
   CRM_PRIORITIES,
   CRM_PRIORITY_LABELS,
-  formatUzPhone,
-  normalizeUzPhone,
 } from "@/lib/crm";
 
 interface CreateTicketModalProps {
@@ -44,7 +41,7 @@ interface CreateTicketModalProps {
   onSuccess: (newTicket: any) => void;
 }
 
-const SLA_OPTIONS = [
+const DEFAULT_SLA_OPTIONS = [
   { label: "2 soat", hours: 2 },
   { label: "12 soat", hours: 12 },
   { label: "24 soat", hours: 24 },
@@ -59,13 +56,11 @@ export default function CreateTicketModal({
   onSuccess,
 }: CreateTicketModalProps) {
   const [loading, setLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [customerFound, setCustomerFound] = useState<any>(null);
+  const [customSla, setCustomSla] = useState<number | null>(null);
 
   const [form, setForm] = useState({
     customerName: "",
-    phone: "+998",
+    phone: "",
     orderId: "",
     category: "DELIVERY_DELAY",
     description: "",
@@ -81,14 +76,18 @@ export default function CreateTicketModal({
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    const savedCustomSla = localStorage.getItem("crm_custom_sla");
+    if (savedCustomSla) {
+      setCustomSla(parseInt(savedCustomSla, 10));
+    }
+  }, []);
 
-  // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
       setForm({
         customerName: "",
-        phone: "+998",
+        phone: "",
         orderId: "",
         category: "DELIVERY_DELAY",
         description: "",
@@ -97,47 +96,9 @@ export default function CreateTicketModal({
         status: "NEW",
         deadlineHours: 24,
       });
-      setCustomerFound(null);
       setAttachments([]);
     }
   }, [isOpen]);
-
-  // Debounced auto-search when phone number changes
-  useEffect(() => {
-    const rawDigits = form.phone.replace(/\D/g, "");
-    if (rawDigits.length < 7) {
-      setCustomerFound(null);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const res = await fetch(`/api/crm/customers/search?q=${encodeURIComponent(form.phone)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            const match = data[0];
-            setCustomerFound(match);
-            setForm((prev) => ({
-              ...prev,
-              customerName: prev.customerName || match.customerName || "",
-              orderId: prev.orderId || match.orderId || "",
-              category: prev.category === "DELIVERY_DELAY" ? match.lastCategory || prev.category : prev.category,
-            }));
-          } else {
-            setCustomerFound(null);
-          }
-        }
-      } catch (e) {
-        // ignore
-      } finally {
-        setSearching(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [form.phone]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -159,12 +120,14 @@ export default function CreateTicketModal({
           const uploaded = await res.json();
           setAttachments((prev) => [
             ...prev,
-            { url: uploaded.url, name: file.name, size: file.size },
+            { url: uploaded.url, name: uploaded.name, size: uploaded.size },
           ]);
+        } else {
+          toast.error(`${file.name} yuklanmadi.`);
         }
       }
-    } catch (e: any) {
-      toast.error("Fayl yuklashda xatolik yuz berdi");
+    } catch (err) {
+      toast.error("Fayl yuklashda xatolik");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -173,36 +136,23 @@ export default function CreateTicketModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    const normalized = normalizeUzPhone(form.phone);
-    if (normalized.replace(/\D/g, "").length !== 12) {
-      toast.error("Telefon raqamini to'liq kiriting (+998...)");
-      return;
+    if (!form.phone.trim()) {
+      return toast.error("Mijoz ID kiritilishi shart");
     }
-    if (!form.customerName.trim()) {
-      toast.error("Mijoz ismini kiriting");
-      return;
-    }
-    if (!form.description.trim()) {
-      toast.error("Muammo matnini kiriting");
-      return;
-    }
-
     setLoading(true);
-    try {
-      const deadlineAt = new Date(Date.now() + form.deadlineHours * 3600 * 1000).toISOString();
 
+    try {
       const payload = {
-        customerName: form.customerName.trim(),
-        phone: normalized,
-        orderId: form.orderId.trim() || undefined,
+        customerName: form.customerName,
+        phone: form.phone,
+        orderId: form.orderId,
         category: form.category,
-        description: form.description.trim(),
+        description: form.description,
         assignedTo: form.assignedTo || undefined,
         priority: form.priority,
         status: form.status,
-        deadlineAt,
-        attachment: attachments[0] || undefined,
+        deadlineAt: new Date(Date.now() + form.deadlineHours * 3600000).toISOString(),
+        attachment: attachments.length > 0 ? attachments[0] : undefined,
       };
 
       const res = await fetch("/api/crm/tickets", {
@@ -211,13 +161,14 @@ export default function CreateTicketModal({
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Murojaat yaratilmadi");
+        const data = await res.json();
+        throw new Error(data.error || "Xatolik yuz berdi");
       }
 
-      toast.success(`Murojaat yaratildi (${data.ticketNumber || "Yangi"})`);
-      onSuccess(data);
+      const newTicket = await res.json();
+      toast.success("Murojaat muvaffaqiyatli saqlandi");
+      onSuccess(newTicket);
       onClose();
     } catch (err: any) {
       toast.error(err.message || "Xatolik yuz berdi");
@@ -226,71 +177,59 @@ export default function CreateTicketModal({
     }
   };
 
-  if (!isOpen || !mounted) return null;
+  const handleAddCustomSla = () => {
+    const hours = prompt("Qo'shimcha necha soat bo'lsin? (Masalan: 48)");
+    if (hours && !isNaN(Number(hours))) {
+      const h = Number(hours);
+      setCustomSla(h);
+      localStorage.setItem("crm_custom_sla", h.toString());
+      setForm({ ...form, deadlineHours: h });
+    }
+  };
 
-  return createPortal(
-    <div className="fixed inset-0 z-[9999] flex h-[100dvh] w-screen items-center justify-center overflow-y-auto bg-black/60 p-3 backdrop-blur-sm animate-in fade-in-0 duration-150 sm:p-6">
-      <div className="relative w-full max-w-2xl max-h-[92vh] flex flex-col bg-background border rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/30">
-          <div>
-            <h2 className="text-lg font-bold">Tezkor Murojaat Qo'shish</h2>
-            <p className="text-xs text-muted-foreground">
-              Mijoz qo'ng'irog'i yoki murojaatini darhol ro'yxatga oling
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  const calculatedDeadline = new Date(Date.now() + form.deadlineHours * 3600000);
+  const formattedDeadline = calculatedDeadline.toLocaleString("ru-RU", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
+  });
 
-        {/* Scrollable Form Content */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
-          {/* Customer info row */}
+  const slaOptions = [...DEFAULT_SLA_OPTIONS];
+  if (customSla && !slaOptions.find(o => o.hours === customSla)) {
+    slaOptions.push({ label: `${customSla} soat`, hours: customSla });
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden bg-background gap-0">
+        <DialogHeader className="px-5 py-4 border-b bg-muted/20">
+          <DialogTitle className="text-lg font-bold">Tezkor Murojaat Qo'shish</DialogTitle>
+          <p className="text-xs text-muted-foreground">Mijoz qo'ng'irog'i yoki murojaatini darhol ro'yxatga oling</p>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-5 overflow-y-auto max-h-[80vh]">
+          {/* Client Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold flex items-center justify-between">
-                <span>Telefon raqami *</span>
-                {searching && (
-                  <span className="flex items-center gap-1 text-[11px] text-blue-600">
-                    <Loader2 className="w-3 h-3 animate-spin" /> Qidirilmoqda...
-                  </span>
-                )}
-                {!searching && customerFound && (
-                  <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
-                    <Check className="w-3 h-3" /> Topildi
-                  </span>
-                )}
-              </Label>
+              <Label className="text-xs font-semibold">Mijoz ID *</Label>
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   required
                   value={form.phone}
-                  onChange={(e) =>
-                    setForm((current) => ({
-                      ...current,
-                      phone: formatUzPhone(e.target.value),
-                    }))
-                  }
-                  placeholder="+998 90 123 45 67"
-                  className="pl-9 text-sm font-medium"
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="ID yoki login"
+                  className="pl-9 text-sm"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Mijoz ismi *</Label>
+              <Label className="text-xs font-semibold">Mijoz ismi</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  required
                   value={form.customerName}
                   onChange={(e) => setForm({ ...form, customerName: e.target.value })}
-                  placeholder="Mijoz ismi"
+                  placeholder="Mijoz ismi (Ixtiyoriy)"
                   className="pl-9 text-sm"
                 />
               </div>
@@ -306,7 +245,7 @@ export default function CreateTicketModal({
                 <Input
                   value={form.orderId}
                   onChange={(e) => setForm({ ...form, orderId: e.target.value })}
-                  placeholder="Masalan: DG0000000"
+                  placeholder="DG0099993"
                   className="pl-9 text-sm"
                 />
               </div>
@@ -321,7 +260,7 @@ export default function CreateTicketModal({
                 <SelectTrigger className="w-full text-sm">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[10000]">
                   {CRM_CATEGORIES.map((cat) => (
                     <SelectItem key={cat} value={cat}>
                       {CRM_CATEGORY_LABELS[cat] || cat}
@@ -356,7 +295,7 @@ export default function CreateTicketModal({
                 <SelectTrigger className="w-full text-sm">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[10000]">
                   {CRM_PRIORITIES.map((pri) => (
                     <SelectItem key={pri} value={pri}>
                       {CRM_PRIORITY_LABELS[pri] || pri}
@@ -376,7 +315,7 @@ export default function CreateTicketModal({
                   <SelectTrigger className="w-full text-sm">
                     <SelectValue placeholder="O'ziga olish yoki tanlash" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="z-[10000]">
                     <SelectItem value="">Biriktirilmagan (Navbatda)</SelectItem>
                     {agents.map((ag) => (
                       <SelectItem key={ag._id} value={ag._id}>
@@ -390,13 +329,19 @@ export default function CreateTicketModal({
           </div>
 
           {/* SLA Presets (1-Click) */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>Hal qilish muddati (SLA)</span>
-            </Label>
-            <div className="flex flex-wrap gap-2">
-              {SLA_OPTIONS.map((opt) => {
+          <div className="space-y-2 p-3 bg-muted/30 rounded-lg border">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <span>Hal qilish muddati (SLA)</span>
+              </Label>
+              <span className="text-[11px] font-medium bg-background px-2 py-0.5 rounded-full border text-primary">
+                {formattedDeadline}
+              </span>
+            </div>
+            
+            <div className="flex flex-wrap gap-2 pt-1">
+              {slaOptions.map((opt) => {
                 const isSelected = form.deadlineHours === opt.hours;
                 return (
                   <button
@@ -406,18 +351,27 @@ export default function CreateTicketModal({
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
                       isSelected
                         ? "bg-primary text-primary-foreground border-primary shadow-xs"
-                        : "bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground"
+                        : "bg-background hover:bg-muted text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {opt.label}
                   </button>
                 );
               })}
+              
+              <button
+                type="button"
+                onClick={handleAddCustomSla}
+                className="px-2 py-1.5 rounded-lg text-xs font-semibold border bg-background hover:bg-muted text-muted-foreground transition flex items-center justify-center"
+                title="Boshqa muddat qo'shish"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
           {/* Compact Attachment Upload */}
-          <div className="space-y-2 pt-1 border-t">
+          <div className="space-y-2 pt-2">
             <div className="flex items-center justify-between">
               <Label className="text-xs font-semibold flex items-center gap-1">
                 <Paperclip className="w-3.5 h-3.5" />
@@ -472,7 +426,7 @@ export default function CreateTicketModal({
           </div>
 
           {/* Footer Submit Bar */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t sticky bottom-0 bg-background pb-2 mt-2">
             <Button
               type="button"
               variant="ghost"
@@ -492,8 +446,7 @@ export default function CreateTicketModal({
             </Button>
           </div>
         </form>
-      </div>
-    </div>,
-    document.body
+      </DialogContent>
+    </Dialog>
   );
 }
