@@ -32,7 +32,7 @@ export default function PortalShell({
       />
       <div className="flex flex-1 flex-col overflow-hidden relative">
         <Topbar user={user} onMenuClick={() => setIsSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto p-3.5 sm:p-6 lg:p-8">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5">
           {children}
         </main>
       </div>

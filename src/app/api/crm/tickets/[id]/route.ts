@@ -7,7 +7,7 @@ import { TicketMessage } from "@/models/TicketMessage";
 import { TicketTask } from "@/models/TicketTask";
 import { CRM_PRIORITIES, CRM_STATUSES, CRM_STATUS_LABELS, CRM_PRIORITY_LABELS } from "@/lib/crm";
 import { canAccessTicket, canUseCrm } from "@/lib/support/access";
-import { canReassignTickets, canMutateCrm } from "@/lib/support/permissions";
+import { canApproveTicketResolution, canReassignTickets, canMutateCrm } from "@/lib/support/permissions";
 import { notifyTicketAssigned } from "@/lib/support/notifications";
 import { createCrmNotification } from "@/lib/crmNotifications";
 import { getAuthUser } from "@/lib/auth-helper";
@@ -95,6 +95,24 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const data = parsed.data;
   const update: any = { lastInteractionAt: new Date() };
 
+  if (data.status && ["RESOLVED", "CLOSED"].includes(data.status)) {
+    return NextResponse.json(
+      { error: "Ticket faqat admin tasdiqlash oqimi orqali yopiladi" },
+      { status: 409 },
+    );
+  }
+
+  if (
+    data.status &&
+    ticket.resolutionApprovalStatus === "PENDING" &&
+    !canApproveTicketResolution(user)
+  ) {
+    return NextResponse.json(
+      { error: "Admin tasdig'idagi ticket statusini operator o'zgartira olmaydi" },
+      { status: 409 },
+    );
+  }
+
   if (data.assignedTo !== undefined) {
     const current = ticket.assignedTo?.toString() || null;
     const isSelfClaim = !current && data.assignedTo === user.id && (user.role === "SUPPORT" || user.role === "OPERATOR");
@@ -127,11 +145,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       `Status: ${CRM_STATUS_LABELS[ticket.status] || ticket.status} → ${CRM_STATUS_LABELS[data.status] || data.status}`
     );
     update.status = data.status;
-    if (data.status === "RESOLVED") {
-      update.resolvedAt = new Date();
-      update.resolutionNote = data.resolutionNote;
-    }
-    if (data.status === "CLOSED") update.closedAt = new Date();
     if (["NEW", "IN_PROGRESS", "WAITING", "WAITING_CLIENT"].includes(data.status)) {
       update.resolvedAt = null;
       update.closedAt = null;

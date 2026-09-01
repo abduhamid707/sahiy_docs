@@ -6,15 +6,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  CheckCircle2,
   Clock3,
+  Copy,
   FileText,
   Loader2,
   MessageCircle,
   Paperclip,
   Phone,
+  RotateCcw,
   Send,
   Shield,
+  ShieldCheck,
   ShoppingBag,
   StickyNote,
   UserRound,
@@ -24,6 +26,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -42,7 +52,6 @@ import {
   ticketPublicId,
 } from "@/lib/crm";
 import { cn } from "@/lib/utils";
-import CrmTaskPanel from "@/components/crm/CrmTaskPanel";
 
 const typeMeta: Record<string, { label: string; icon: any; box: string }> = {
   CUSTOMER_MESSAGE: {
@@ -72,7 +81,6 @@ export default function CrmTicketDetail({
   messages,
   previousTickets,
   agents,
-  initialTasks,
   currentUser,
   canManage,
   nowIso,
@@ -83,9 +91,16 @@ export default function CrmTicketDetail({
   const [type, setType] = useState("OPERATOR_RESPONSE");
   const [attachment, setAttachment] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
+  const [approvalOpen, setApprovalOpen] = useState(false);
+  const [smsText, setSmsText] = useState(ticket.resolutionSmsText || "");
+  const [reviewComment, setReviewComment] = useState("");
   const overdue = isOverdue(ticket, nowIso);
   const publicId = ticketPublicId(ticket);
   const closed = ["RESOLVED", "CLOSED"].includes(ticket.status);
+  const approvalStatus = ticket.resolutionApprovalStatus || "NONE";
+  const canApprove = currentUser.role !== "RAHBAR" && (["SUPER_ADMIN", "ADMIN"].includes(currentUser.role) || currentUser.isLead);
+  const assignedId = ticket.assignedTo?._id || ticket.assignedTo;
+  const isAssignedOperator = currentUser.role === "SUPPORT" && assignedId === currentUser.id;
   const patch = async (data: any, success: string) => {
     setLoading(true);
     try {
@@ -152,22 +167,64 @@ export default function CrmTicketDetail({
       setLoading(false);
     }
   };
+  const submitResolutionAction = async (
+    action: "SUBMIT" | "APPROVE" | "RETURN",
+  ) => {
+    if (action === "SUBMIT" && smsText.trim().length < 3) {
+      return toast.error("Mijozga yuborilgan SMS matnini yozing");
+    }
+    if (action === "RETURN" && reviewComment.trim().length < 3) {
+      return toast.error("Operatorga qaytarish sababini yozing");
+    }
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `/api/crm/tickets/${ticket._id}/resolution-approval`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action,
+            ...(action === "SUBMIT" ? { smsText: smsText.trim() } : {}),
+            ...(action === "RETURN" ? { comment: reviewComment.trim() } : {}),
+          }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      toast.success(
+        action === "SUBMIT"
+          ? "SMS qayd qilindi va ticket adminga yuborildi"
+          : action === "APPROVE"
+            ? "Yakuniy qaror tasdiqlandi va ticket yopildi"
+            : "Ticket operatorga qaytarildi",
+      );
+      setApprovalOpen(false);
+      setReviewComment("");
+      window.dispatchEvent(new Event("crm-notifications-changed"));
+      router.refresh();
+    } catch (error: any) {
+      toast.error(error.message || "Amal bajarilmadi");
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <Button
             nativeButton={false}
             variant="outline"
             size="icon"
-            className="h-10 w-10 rounded-xl"
+            className="h-9 w-9 rounded-lg"
             render={<Link href="/crm" />}
           >
             <ArrowLeft />
           </Button>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold sm:text-2xl">{publicId}</h1>
+              <h1 className="text-lg font-bold tracking-tight sm:text-xl">{publicId}</h1>
               {overdue && (
                 <span className="rounded-lg bg-rose-500/15 px-2 py-1 text-[10px] font-bold text-rose-600">
                   KECHIKKAN
@@ -179,41 +236,93 @@ export default function CrmTicketDetail({
                 </span>
               )}
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {CRM_CATEGORY_LABELS[ticket.category || "OTHER"]}
             </p>
           </div>
         </div>
-        <Button
-          disabled={loading}
-          onClick={() =>
-            patch(
-              { status: closed ? "IN_PROGRESS" : "RESOLVED" },
-              closed ? "Ticket qayta ochildi" : "Ticket hal qilindi",
-            )
-          }
-          className={cn(
-            "h-10 rounded-xl",
-            closed ? "" : "bg-emerald-600 text-white hover:bg-emerald-700",
-          )}
-        >
-          {closed ? <MessageCircle /> : <CheckCircle2 />}
-          {closed ? "Qayta ochish" : "Hal qilish"}
-        </Button>
+        {closed ? (
+          <span className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white">
+            <ShieldCheck className="h-3.5 w-3.5" /> Admin tasdiqladi
+          </span>
+        ) : approvalStatus === "PENDING" ? (
+          canApprove ? (
+            <Button onClick={() => setApprovalOpen(true)} disabled={loading} size="sm" className="h-9 rounded-lg bg-blue-600 text-xs text-white hover:bg-blue-700">
+              <ShieldCheck /> Ko‘rib chiqish
+            </Button>
+          ) : (
+            <Button disabled size="sm" className="h-9 rounded-lg text-xs">
+              <Clock3 /> Admin tasdig‘i kutilmoqda
+            </Button>
+          )
+        ) : isAssignedOperator ? (
+          <Button onClick={() => setApprovalOpen(true)} disabled={loading} size="sm" className="h-9 rounded-lg bg-brand-blue text-xs text-white hover:bg-brand-blue-hover">
+            <Send /> Adminga yuborish
+          </Button>
+        ) : null}
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_330px]">
-        <div className="space-y-4">
-          <CrmTaskPanel ticketId={ticket._id} initialTasks={initialTasks} agents={agents} currentUser={currentUser} nowIso={nowIso} defaultAssigneeId={ticket.assignedTo?._id || ticket.assignedTo} />
-          <Card className="rounded-2xl">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="text-base">Conversation va tarix</CardTitle>
+
+      {approvalStatus === "RETURNED" && (
+        <div className="rounded-xl border border-rose-300 bg-rose-500/10 p-4 text-sm">
+          <p className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-300"><RotateCcw className="h-4 w-4" /> Admin operatorga qaytardi</p>
+          <p className="mt-1 whitespace-pre-wrap">{ticket.resolutionReviewComment}</p>
+        </div>
+      )}
+
+      <Dialog open={approvalOpen} onOpenChange={(open) => !loading && setApprovalOpen(open)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{canApprove && approvalStatus === "PENDING" ? "Yakuniy qarorni ko‘rib chiqish" : "Ticketni adminga yuborish"}</DialogTitle>
+            <DialogDescription>
+              {canApprove && approvalStatus === "PENDING"
+                ? "Operator mijozga qo‘lda yuborgan SMS matnini tekshiring. Oxirgi qarorni admin beradi."
+                : "Mijozga qo‘lda yuborgan SMS xabaringizni yozing. U tarixga saqlanib, admin tasdig‘iga yuboriladi."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {canApprove && approvalStatus === "PENDING" ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border bg-muted/40 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Mijozga yuborilgan SMS</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{ticket.resolutionSmsText}</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold">Qaytarish sababi</label>
+                <Textarea value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} placeholder="Faqat operatorga qaytarishda majburiy..." className="min-h-24" />
+              </div>
+              <DialogFooter className="gap-2 sm:justify-between">
+                <Button variant="outline" onClick={() => submitResolutionAction("RETURN")} disabled={loading} className="border-rose-300 text-rose-700 hover:bg-rose-500/10"><RotateCcw /> Operatorga qaytarish</Button>
+                <Button onClick={() => submitResolutionAction("APPROVE")} disabled={loading} className="bg-emerald-600 text-white hover:bg-emerald-700">{loading ? <Loader2 className="animate-spin" /> : <ShieldCheck />} Tasdiqlash</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4 pt-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold">Mijozga yuborilgan SMS matni *</label>
+                <Textarea autoFocus value={smsText} onChange={(event) => setSmsText(event.target.value)} placeholder="Masalan: Hurmatli mijoz, murojaatingiz ko‘rib chiqildi va muammo hal qilindi..." className="min-h-32" />
+                <p className="text-xs text-muted-foreground">Hozircha SMS tizim orqali jo‘natilmaydi. Bu yerga operator mijozga qo‘lda yuborgan xabarini qayd qiladi.</p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setApprovalOpen(false)} disabled={loading}>Bekor qilish</Button>
+                <Button onClick={() => submitResolutionAction("SUBMIT")} disabled={loading || smsText.trim().length < 3} className="bg-brand-blue text-white hover:bg-brand-blue-hover">{loading ? <Loader2 className="animate-spin" /> : <Send />} Adminga yuborish</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <div className="grid gap-3 xl:h-[calc(100dvh-9.75rem)] xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="flex h-[calc(100dvh-9.5rem)] min-h-[32rem] flex-col gap-2.5 xl:h-auto xl:min-h-0">
+          {/* Task funksiyasi hozircha mahsulot oqimidan olib tashlangan. */}
+          <Card className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl">
+            <CardHeader className="shrink-0 border-b px-4 py-2.5">
+              <CardTitle className="text-sm font-semibold">Suhbat va tarix</CardTitle>
             </CardHeader>
-            <CardContent className="max-h-[58vh] space-y-3 overflow-y-auto p-4 sm:p-5">
-              <div className="rounded-xl border bg-muted/30 p-3">
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <CardContent className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+              <div className="rounded-lg border bg-muted/25 px-3 py-2">
+                <p className="mb-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
                   Muammo mazmuni
                 </p>
-                <p className="whitespace-pre-wrap text-sm leading-6">
+                <p className="whitespace-pre-wrap text-xs leading-5">
                   {ticket.problem}
                 </p>
               </div>
@@ -242,22 +351,22 @@ export default function CrmTicketDetail({
                   >
                     <div
                       className={cn(
-                        "border p-3 shadow-sm",
+                        "border px-3 py-2 shadow-sm",
                         (isOperator || isCustomer) &&
                           "max-w-[88%] sm:max-w-[76%]",
                         isOperator &&
-                          "rounded-2xl rounded-br-md border-brand-blue bg-brand-blue text-white",
+                          "rounded-xl rounded-br-sm border-brand-blue bg-brand-blue text-white",
                         isCustomer &&
-                          "rounded-2xl rounded-bl-md border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/40",
+                          "rounded-xl rounded-bl-sm border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/40",
                         message.type === "INTERNAL_NOTE" &&
-                          "w-full rounded-xl border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30",
+                          "w-full rounded-lg border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30",
                         isSystem &&
-                          "max-w-[92%] rounded-full bg-muted/60 px-4 py-2 shadow-none",
+                          "max-w-[92%] rounded-lg bg-muted/60 px-3 py-1.5 shadow-none",
                       )}
                     >
-                      <div className="mb-1.5 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-1.5 text-[11px] font-bold">
-                          <Icon className="h-3.5 w-3.5" />
+                      <div className="mb-1 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1 text-[10px] font-bold">
+                          <Icon className="h-3 w-3" />
                           {meta.label}
                           {message.author?.name || message.authorName ? (
                             <span
@@ -274,7 +383,7 @@ export default function CrmTicketDetail({
                         </div>
                         <time
                           className={cn(
-                            "shrink-0 text-[10px]",
+                            "shrink-0 text-[9px]",
                             isOperator
                               ? "text-white/65"
                               : "text-muted-foreground",
@@ -285,8 +394,8 @@ export default function CrmTicketDetail({
                       </div>
                       <p
                         className={cn(
-                          "whitespace-pre-wrap text-sm leading-6",
-                          isSystem && "text-xs text-muted-foreground",
+                          "whitespace-pre-wrap text-xs leading-5",
+                          isSystem && "text-[11px] leading-4 text-muted-foreground",
                         )}
                       >
                         {message.body}
@@ -313,14 +422,14 @@ export default function CrmTicketDetail({
               })}
             </CardContent>
           </Card>
-          <Card className="rounded-2xl">
-            <CardContent className="p-4">
-              <div className="mb-3 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-                <div className="flex gap-2">
+          <Card className="shrink-0 rounded-xl">
+            <CardContent className="p-3">
+              <div className="mb-2 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
+                <div className="flex gap-1.5">
                   <button
                     onClick={() => setType("OPERATOR_RESPONSE")}
                     className={cn(
-                      "rounded-lg px-3 py-2 text-xs font-bold",
+                      "rounded-md px-2.5 py-1.5 text-[11px] font-bold",
                       type === "OPERATOR_RESPONSE"
                         ? "bg-brand-blue text-white"
                         : "bg-muted",
@@ -331,7 +440,7 @@ export default function CrmTicketDetail({
                   <button
                     onClick={() => setType("INTERNAL_NOTE")}
                     className={cn(
-                      "rounded-lg px-3 py-2 text-xs font-bold",
+                      "rounded-md px-2.5 py-1.5 text-[11px] font-bold",
                       type === "INTERNAL_NOTE"
                         ? "bg-amber-500 text-black"
                         : "bg-muted",
@@ -343,7 +452,7 @@ export default function CrmTicketDetail({
                 <button
                   onClick={() => setType("CUSTOMER_MESSAGE")}
                   className={cn(
-                    "text-left text-[11px] font-semibold sm:text-right",
+                    "text-left text-[10px] font-semibold sm:text-right",
                     type === "CUSTOMER_MESSAGE"
                       ? "text-blue-600 underline"
                       : "text-muted-foreground hover:text-foreground",
@@ -362,7 +471,7 @@ export default function CrmTicketDetail({
                       ? "Mijoz qo‘ng‘iroqda aytgan xabarni kiriting..."
                       : "Mijozga javob yoki yangilanish yozing..."
                 }
-                className="min-h-24 rounded-xl"
+                className="min-h-16 resize-none rounded-lg text-xs leading-5"
               />
               {attachment && (
                 <div className="mt-2 flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-xs">
@@ -376,9 +485,9 @@ export default function CrmTicketDetail({
                   </Button>
                 </div>
               )}
-              <div className="mt-3 flex justify-between">
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted">
-                  <Paperclip className="h-4 w-4" />
+              <div className="mt-2 flex justify-between">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted">
+                  <Paperclip className="h-3.5 w-3.5" />
                   {uploading ? "Yuklanmoqda" : "Fayl"}
                   <input
                     type="file"
@@ -391,7 +500,8 @@ export default function CrmTicketDetail({
                 <Button
                   onClick={send}
                   disabled={loading || uploading || !body.trim()}
-                  className="rounded-xl bg-brand-blue text-white hover:bg-brand-blue-hover"
+                  size="sm"
+                  className="h-8 rounded-lg bg-brand-blue px-3 text-xs text-white hover:bg-brand-blue-hover"
                 >
                   {loading ? <Loader2 className="animate-spin" /> : <Send />}
                   Qo‘shish
@@ -400,12 +510,12 @@ export default function CrmTicketDetail({
             </CardContent>
           </Card>
         </div>
-        <aside className="space-y-4">
-          <Card className="rounded-2xl">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="text-base">Ticket ma’lumotlari</CardTitle>
+        <aside className="space-y-3 xl:min-h-0 xl:overflow-y-auto xl:pr-1">
+          <Card className="rounded-xl">
+            <CardHeader className="border-b px-4 py-2.5">
+              <CardTitle className="text-sm font-semibold">Ticket ma’lumotlari</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4 p-4">
+            <CardContent className="space-y-3 p-3.5">
               <Info
                 icon={UserRound}
                 label="Mijoz"
@@ -415,11 +525,13 @@ export default function CrmTicketDetail({
                 icon={Phone}
                 label="Telefon"
                 value={formatUzPhone(ticket.callerPhone)}
+                copyValue={ticket.callerPhone}
               />
               <Info
                 icon={ShoppingBag}
                 label="Order"
                 value={ticket.orderId || "Ko'rsatilmagan"}
+                copyValue={ticket.orderId}
               />
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -433,7 +545,7 @@ export default function CrmTicketDetail({
                     }
                     disabled={loading}
                   >
-                    <SelectTrigger className="h-9 rounded-lg text-xs">
+                    <SelectTrigger className="h-8 rounded-md text-[11px]">
                       <SelectValue>
                         {CRM_STATUS_LABELS[ticket.status]}
                       </SelectValue>
@@ -443,8 +555,6 @@ export default function CrmTicketDetail({
                         "NEW",
                         "IN_PROGRESS",
                         "WAITING",
-                        "RESOLVED",
-                        "CLOSED",
                       ].map((k) => (
                         <SelectItem key={k} value={k}>
                           {CRM_STATUS_LABELS[k]}
@@ -464,7 +574,7 @@ export default function CrmTicketDetail({
                     }
                     disabled={loading}
                   >
-                    <SelectTrigger className="h-9 rounded-lg text-xs">
+                    <SelectTrigger className="h-8 rounded-md text-[11px]">
                       <SelectValue>
                         {CRM_PRIORITY_LABELS[ticket.priority || "NORMAL"]}
                       </SelectValue>
@@ -494,7 +604,7 @@ export default function CrmTicketDetail({
                     }
                     disabled={loading}
                   >
-                    <SelectTrigger className="h-10 rounded-lg text-xs">
+                    <SelectTrigger className="h-8 rounded-md text-[11px]">
                       <SelectValue>
                         {ticket.assignedTo?.name || "Navbatda"}
                       </SelectValue>
@@ -526,7 +636,7 @@ export default function CrmTicketDetail({
               )}
               <div
                 className={cn(
-                  "rounded-xl border p-3",
+                  "rounded-lg border p-2.5",
                   overdue ? "border-rose-300 bg-rose-500/10" : "bg-muted/40",
                 )}
               >
@@ -564,9 +674,9 @@ export default function CrmTicketDetail({
               </div>
             </CardContent>
           </Card>
-          <Card className="rounded-2xl">
-            <CardHeader className="border-b py-4">
-              <CardTitle className="text-base">Avvalgi ticketlar</CardTitle>
+          <Card className="rounded-xl">
+            <CardHeader className="border-b px-4 py-2.5">
+              <CardTitle className="text-sm font-semibold">Avvalgi ticketlar</CardTitle>
             </CardHeader>
             <CardContent className="p-3">
               {!previousTickets.length ? (
@@ -600,18 +710,32 @@ export default function CrmTicketDetail({
   );
 }
 
-function Info({ icon: Icon, label, value }: any) {
+function Info({ icon: Icon, label, value, copyValue }: any) {
+  const copy = async () => {
+    if (!copyValue) return;
+    try {
+      await navigator.clipboard.writeText(String(copyValue));
+      toast.success(`${label} nusxalandi`);
+    } catch {
+      toast.error("Nusxalab bo‘lmadi");
+    }
+  };
   return (
-    <div className="flex items-start gap-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-        <Icon className="h-4 w-4" />
+    <div className="group flex items-center gap-2.5">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
+        <Icon className="h-3.5 w-3.5" />
       </div>
-      <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase text-muted-foreground">
+      <div className="min-w-0 flex-1">
+        <p className="text-[9px] font-bold uppercase text-muted-foreground">
           {label}
         </p>
-        <p className="truncate text-sm font-semibold">{value}</p>
+        <p className="truncate text-xs font-semibold">{value}</p>
       </div>
+      {copyValue ? (
+        <button type="button" onClick={copy} title={`${label}ni nusxalash`} aria-label={`${label}ni nusxalash`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-60 transition hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:opacity-100">
+          <Copy className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
     </div>
   );
 }

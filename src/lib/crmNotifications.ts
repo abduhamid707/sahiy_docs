@@ -3,7 +3,7 @@ import { CrmNotification } from "@/models/CrmNotification";
 import { User } from "@/models/User";
 import { adminMessaging } from "@/lib/firebase-admin";
 
-type NotificationKind = "TICKET_ASSIGNED" | "TASK_ASSIGNED" | "TASK_APPROVAL_REQUESTED" | "TASK_APPROVED" | "TASK_REJECTED" | "ONE_HOUR_LEFT" | "FIFTEEN_MINUTES_LEFT" | "OVERDUE" | "CRITICAL" | "EXECUTIVE_REPORT";
+type NotificationKind = "TICKET_ASSIGNED" | "TASK_ASSIGNED" | "TASK_APPROVAL_REQUESTED" | "TASK_APPROVED" | "TASK_REJECTED" | "ONE_HOUR_LEFT" | "FIFTEEN_MINUTES_LEFT" | "OVERDUE" | "CRITICAL" | "EXECUTIVE_REPORT" | "TICKET_APPROVAL_REQUESTED" | "TICKET_APPROVED" | "TICKET_RETURNED";
 
 export async function createCrmNotification(input: {
   userId: string;
