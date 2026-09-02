@@ -15,6 +15,10 @@ const schema = z.discriminatedUnion("action", [
     action: z.literal("SUBMIT"),
     smsText: z.string().trim().min(3, "Mijozga yuborilgan SMS matnini yozing").max(2000),
   }),
+  z.object({
+    action: z.literal("RESOLVE"),
+    smsText: z.string().trim().min(3, "Mijozga yuborilgan SMS matnini yozing").max(2000),
+  }),
   z.object({ action: z.literal("APPROVE") }),
   z.object({
     action: z.literal("RETURN"),
@@ -39,6 +43,59 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const action = parsed.data.action;
   const isApprover = canApproveTicketResolution(user);
+
+  if (action === "RESOLVE") {
+    if (user.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "Faqat super admin ticketni bevosita hal qila oladi" }, { status: 403 });
+    }
+    if (["RESOLVED", "CLOSED"].includes(ticket.status)) {
+      return NextResponse.json({ error: "Ticket allaqachon yopilgan" }, { status: 409 });
+    }
+
+    const resolvedAt = new Date();
+    ticket.resolutionApprovalStatus = "APPROVED";
+    ticket.resolutionSmsText = parsed.data.smsText;
+    ticket.resolutionReviewComment = undefined;
+    ticket.resolutionSubmittedBy = user.id;
+    ticket.resolutionSubmittedAt = resolvedAt;
+    ticket.resolutionReviewedBy = user.id;
+    ticket.resolutionReviewedAt = resolvedAt;
+    ticket.status = "RESOLVED";
+    ticket.resolvedAt = resolvedAt;
+    ticket.closedAt = undefined;
+    ticket.resolutionNote = parsed.data.smsText;
+    ticket.lastInteractionAt = resolvedAt;
+    await ticket.save();
+
+    await TicketMessage.create([
+      {
+        ticketId: id,
+        type: "OPERATOR_RESPONSE",
+        body: parsed.data.smsText,
+        author: user.id,
+        authorName: user.name,
+      },
+      {
+        ticketId: id,
+        type: "SYSTEM_EVENT",
+        body: `Super admin ticketni bevosita hal qildi${user.name ? ` · ${user.name}` : ""}`,
+        author: user.id,
+        authorName: user.name,
+      },
+    ]);
+
+    const assignedId = ticket.assignedTo?.toString();
+    if (assignedId && assignedId !== user.id) {
+      await createCrmNotification({
+        userId: assignedId,
+        ticketId: ticket._id.toString(),
+        kind: "TICKET_APPROVED",
+        title: "Ticket super admin tomonidan hal qilindi",
+        body: `${ticket.ticketNumber}: yakuniy qaror tasdiqlandi`,
+        link: `/crm/tickets/${ticket._id}`,
+      });
+    }
+  }
 
   if (action === "SUBMIT") {
     if (isApprover || user.role !== "SUPPORT") {

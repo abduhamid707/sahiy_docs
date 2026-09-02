@@ -99,6 +99,7 @@ export default function CrmTicketDetail({
   const closed = ["RESOLVED", "CLOSED"].includes(ticket.status);
   const approvalStatus = ticket.resolutionApprovalStatus || "NONE";
   const canApprove = currentUser.role !== "RAHBAR" && (["SUPER_ADMIN", "ADMIN"].includes(currentUser.role) || currentUser.isLead);
+  const isSuperAdmin = currentUser.role === "SUPER_ADMIN";
   const assignedId = ticket.assignedTo?._id || ticket.assignedTo;
   const isAssignedOperator = currentUser.role === "SUPPORT" && assignedId === currentUser.id;
   const patch = async (data: any, success: string) => {
@@ -168,9 +169,9 @@ export default function CrmTicketDetail({
     }
   };
   const submitResolutionAction = async (
-    action: "SUBMIT" | "APPROVE" | "RETURN",
+    action: "SUBMIT" | "RESOLVE" | "APPROVE" | "RETURN",
   ) => {
-    if (action === "SUBMIT" && smsText.trim().length < 3) {
+    if (["SUBMIT", "RESOLVE"].includes(action) && smsText.trim().length < 3) {
       return toast.error("Mijozga yuborilgan SMS matnini yozing");
     }
     if (action === "RETURN" && reviewComment.trim().length < 3) {
@@ -185,7 +186,7 @@ export default function CrmTicketDetail({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action,
-            ...(action === "SUBMIT" ? { smsText: smsText.trim() } : {}),
+            ...(["SUBMIT", "RESOLVE"].includes(action) ? { smsText: smsText.trim() } : {}),
             ...(action === "RETURN" ? { comment: reviewComment.trim() } : {}),
           }),
         },
@@ -195,6 +196,8 @@ export default function CrmTicketDetail({
       toast.success(
         action === "SUBMIT"
           ? "SMS qayd qilindi va ticket adminga yuborildi"
+          : action === "RESOLVE"
+            ? "SMS qayd qilindi va ticket hal qilindi"
           : action === "APPROVE"
             ? "Yakuniy qaror tasdiqlandi va ticket yopildi"
             : "Ticket operatorga qaytarildi",
@@ -255,6 +258,10 @@ export default function CrmTicketDetail({
               <Clock3 /> Admin tasdig‘i kutilmoqda
             </Button>
           )
+        ) : isSuperAdmin ? (
+          <Button onClick={() => setApprovalOpen(true)} disabled={loading} size="sm" className="h-9 rounded-lg bg-emerald-600 text-xs text-white hover:bg-emerald-700">
+            <ShieldCheck /> Hal qilish
+          </Button>
         ) : isAssignedOperator ? (
           <Button onClick={() => setApprovalOpen(true)} disabled={loading} size="sm" className="h-9 rounded-lg bg-brand-blue text-xs text-white hover:bg-brand-blue-hover">
             <Send /> Adminga yuborish
@@ -272,11 +279,19 @@ export default function CrmTicketDetail({
       <Dialog open={approvalOpen} onOpenChange={(open) => !loading && setApprovalOpen(open)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{canApprove && approvalStatus === "PENDING" ? "Yakuniy qarorni ko‘rib chiqish" : "Ticketni adminga yuborish"}</DialogTitle>
+            <DialogTitle>
+              {canApprove && approvalStatus === "PENDING"
+                ? "Yakuniy qarorni ko‘rib chiqish"
+                : isSuperAdmin
+                  ? "Ticketni hal qilish"
+                  : "Ticketni adminga yuborish"}
+            </DialogTitle>
             <DialogDescription>
               {canApprove && approvalStatus === "PENDING"
                 ? "Operator mijozga qo‘lda yuborgan SMS matnini tekshiring. Oxirgi qarorni admin beradi."
-                : "Mijozga qo‘lda yuborgan SMS xabaringizni yozing. U tarixga saqlanib, admin tasdig‘iga yuboriladi."}
+                : isSuperAdmin
+                  ? "Mijozga yuborilgan SMS matnini yozing. Tasdiqlangach ticket darhol hal qilinadi."
+                  : "Mijozga qo‘lda yuborgan SMS xabaringizni yozing. U tarixga saqlanib, admin tasdig‘iga yuboriladi."}
             </DialogDescription>
           </DialogHeader>
 
@@ -300,11 +315,20 @@ export default function CrmTicketDetail({
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold">Mijozga yuborilgan SMS matni *</label>
                 <Textarea autoFocus value={smsText} onChange={(event) => setSmsText(event.target.value)} placeholder="Masalan: Hurmatli mijoz, murojaatingiz ko‘rib chiqildi va muammo hal qilindi..." className="min-h-32" />
-                <p className="text-xs text-muted-foreground">Hozircha SMS tizim orqali jo‘natilmaydi. Bu yerga operator mijozga qo‘lda yuborgan xabarini qayd qiladi.</p>
+                <p className="text-xs text-muted-foreground">
+                  Hozircha SMS tizim orqali jo‘natilmaydi. Bu yerga mijozga qo‘lda yuborilgan xabar qayd qilinadi.
+                </p>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setApprovalOpen(false)} disabled={loading}>Bekor qilish</Button>
-                <Button onClick={() => submitResolutionAction("SUBMIT")} disabled={loading || smsText.trim().length < 3} className="bg-brand-blue text-white hover:bg-brand-blue-hover">{loading ? <Loader2 className="animate-spin" /> : <Send />} Adminga yuborish</Button>
+                <Button
+                  onClick={() => submitResolutionAction(isSuperAdmin ? "RESOLVE" : "SUBMIT")}
+                  disabled={loading || smsText.trim().length < 3}
+                  className={isSuperAdmin ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-brand-blue text-white hover:bg-brand-blue-hover"}
+                >
+                  {loading ? <Loader2 className="animate-spin" /> : isSuperAdmin ? <ShieldCheck /> : <Send />}
+                  {isSuperAdmin ? "Hal qilish" : "Adminga yuborish"}
+                </Button>
               </DialogFooter>
             </div>
           )}
