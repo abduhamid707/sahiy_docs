@@ -58,6 +58,7 @@ export default function CreateTicketModal({
   const [slaPresets, setSlaPresets] = useState<SlaPreset[]>(INITIAL_SLA_PRESETS);
   const [customSlaHours, setCustomSlaHours] = useState("");
   const [slaPreviewHours, setSlaPreviewHours] = useState<number | null>(null);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
 
   const toLocalDatetime = (d: Date) => {
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -227,6 +228,7 @@ export default function CreateTicketModal({
 
   useEffect(() => {
     if (isOpen) {
+      const initialDeadlineAt = toLocalDatetime(new Date(Date.now() + 24 * 3600000));
       setForm({
         customerId: "",
         customerName: "",
@@ -238,14 +240,43 @@ export default function CreateTicketModal({
         priority: "NORMAL",
         status: "NEW",
         deadlineHours: 24,
-        deadlineAt: toLocalDatetime(new Date(Date.now() + 24 * 3600000)),
+        deadlineAt: initialDeadlineAt,
       });
       setAttachments([]);
       setCustomSlaHours("");
       setSlaPreviewHours(null);
       setFormError("");
+      setDiscardConfirmOpen(false);
     }
   }, [isOpen]);
+
+  const hasUnsavedChanges = Boolean(
+    form.customerId.trim() ||
+      form.customerName.trim() ||
+      form.phone.trim() ||
+      form.orderId.trim() ||
+      form.description.trim() ||
+      form.assignedTo ||
+      form.category !== "DELIVERY_DELAY" ||
+      form.priority !== "NORMAL" ||
+      form.deadlineHours !== 24 ||
+      customSlaHours ||
+      attachments.length,
+  );
+
+  const requestClose = () => {
+    if (loading || uploading) return;
+    if (hasUnsavedChanges) {
+      setDiscardConfirmOpen(true);
+      return;
+    }
+    onClose();
+  };
+
+  const discardAndClose = () => {
+    setDiscardConfirmOpen(false);
+    onClose();
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -342,12 +373,54 @@ export default function CreateTicketModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden bg-background gap-0">
+    <Dialog
+      open={isOpen}
+      disablePointerDismissal
+      onOpenChange={(open) => !open && requestClose()}
+    >
+      <DialogContent
+        keepMounted
+        overlayClassName="h-dvh w-screen bg-slate-950/45 backdrop-blur-none supports-backdrop-filter:backdrop-blur-none"
+        className="gap-0 overflow-hidden bg-background p-0 duration-75 data-open:zoom-in-100 data-closed:zoom-out-100 sm:max-w-2xl"
+      >
         <DialogHeader className="px-5 py-4 border-b bg-muted/20">
           <DialogTitle className="text-lg font-bold">Tezkor Murojaat Qo'shish</DialogTitle>
           <p className="text-xs text-muted-foreground">Mijoz qo'ng'irog'i yoki murojaatini darhol ro'yxatga oling</p>
         </DialogHeader>
+
+        {discardConfirmOpen && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-background/85 p-5 backdrop-blur-sm">
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="discard-ticket-title"
+              aria-describedby="discard-ticket-description"
+              className="w-full max-w-sm rounded-xl border bg-card p-5 shadow-2xl"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="size-4.5" />
+                </div>
+                <div>
+                  <h3 id="discard-ticket-title" className="font-semibold">
+                    Kiritilgan ma’lumotlar o‘chib ketadi
+                  </h3>
+                  <p id="discard-ticket-description" className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Formani yopsangiz, saqlanmagan User ID, izoh va biriktirilgan fayllarni qayta tiklab bo‘lmaydi.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => setDiscardConfirmOpen(false)}>
+                  Formaga qaytish
+                </Button>
+                <Button type="button" variant="destructive" onClick={discardAndClose}>
+                  Baribir yopish
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="p-5 space-y-5 overflow-y-auto max-h-[80vh]">
           {/* Client Info */}
@@ -652,7 +725,7 @@ export default function CreateTicketModal({
             <Button
               type="button"
               variant="ghost"
-              onClick={onClose}
+              onClick={requestClose}
               disabled={loading}
               className="text-xs"
             >

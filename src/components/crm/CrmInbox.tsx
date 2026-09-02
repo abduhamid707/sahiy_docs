@@ -63,11 +63,40 @@ const priorityStyle: Record<string, string> = {
   CRITICAL: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
 };
 
+function CreateTicketControl({
+  agents,
+  canAssign,
+  onSuccess,
+}: {
+  agents: any[];
+  canAssign: boolean;
+  onSuccess: (newTicket: any) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <>
+      <Button
+        type="button"
+        className="h-10 rounded-xl bg-brand-blue text-white hover:bg-brand-blue-hover"
+        onClick={() => setIsOpen(true)}
+      >
+        <Plus className="mr-1 h-4 w-4" /> Ticket qo‘shish
+      </Button>
+      <CreateTicketModal
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        agents={agents}
+        canAssign={canAssign}
+        onSuccess={onSuccess}
+      />
+    </>
+  );
+}
+
 export default function CrmInbox({
   initialTickets,
   agents,
-  initialTasks,
-  initialNotifications,
   currentUserId,
   canAssign,
   nowIso,
@@ -88,7 +117,6 @@ export default function CrmInbox({
   const [assignee, setAssignee] = useState("ALL");
   const [date, setDate] = useState("");
   const [updating, setUpdating] = useState("");
-  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [executiveReportOpen, setExecutiveReportOpen] = useState(false);
   const stats = useMemo(() => computeTicketStats(tickets, nowIso), [tickets, nowIso]);
   const summary = useMemo(
@@ -249,24 +277,15 @@ export default function CrmInbox({
           >
             Analytics
           </Button>
-          <Button
-            type="button"
-            className="h-10 rounded-xl bg-brand-blue text-white hover:bg-brand-blue-hover"
-            onClick={() => setCreateModalOpen(true)}
-          >
-            <Plus className="w-4 h-4 mr-1" /> Ticket qo‘shish
-          </Button>
+          <CreateTicketControl
+            agents={agents}
+            canAssign={canAssign}
+            onSuccess={(newTicket) => {
+              setTickets((prev) => [newTicket, ...prev]);
+            }}
+          />
         </div>
       </div>
-      <CreateTicketModal
-        isOpen={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        agents={agents}
-        canAssign={canAssign}
-        onSuccess={(newTicket) => {
-          setTickets((prev) => [newTicket, ...prev]);
-        }}
-      />
       <ExecutiveReportModal
         isOpen={executiveReportOpen}
         onClose={() => setExecutiveReportOpen(false)}

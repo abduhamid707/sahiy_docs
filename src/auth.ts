@@ -12,21 +12,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Credentials({
       async authorize(credentials) {
         try {
+          const email =
+            typeof credentials?.email === "string"
+              ? credentials.email.trim().toLowerCase()
+              : "";
+          const password =
+            typeof credentials?.password === "string"
+              ? credentials.password.trim()
+              : "";
+
+          if (!email || !password) return null;
+
           await dbConnect();
-          const user = await User.findOne({ email: credentials?.email });
+          const user = await User.findOne({ email });
         
-          if (user && credentials?.password) {
+          if (user) {
             let isMatch = false;
             try {
               // Only try bcrypt if the stored password looks like a hash
               if (user.password.startsWith('$2')) {
-                isMatch = await bcrypt.compare(credentials.password as string, user.password);
+                isMatch = await bcrypt.compare(password, user.password);
               }
             } catch (err) {
               console.error("Bcrypt compare error:", err);
             }
             
-            if (isMatch || credentials.password === user.password) {
+            if (isMatch || password === user.password) {
               return {
                 id: user._id.toString(),
                 name: user.name,
