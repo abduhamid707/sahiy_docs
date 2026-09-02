@@ -12,7 +12,7 @@ const TicketSchema = new Schema(
     orderId: { type: String, trim: true, index: true },
     problem: { type: String, required: true, trim: true },
     notes: String,
-    category: { type: String, enum: ["DELIVERY_DELAY", "TRACKING", "NOT_RECEIVED", "WRONG_OR_MISSING", "REFUND_PAYMENT", "CHINA_WAREHOUSE", "OTHER"], default: "OTHER", index: true },
+    category: { type: String, enum: ["DELIVERY", "DELIVERY_DELAY", "TRACKING", "NOT_RECEIVED", "WRONG_OR_MISSING", "REFUND_PAYMENT", "CHINA_WAREHOUSE", "OTHER"], default: "OTHER", index: true },
     priority: { type: String, enum: ["LOW", "NORMAL", "HIGH", "CRITICAL"], default: "NORMAL", index: true },
     assignedTo: { type: Schema.Types.ObjectId, ref: "User", index: true },
     createdBy: { type: Schema.Types.ObjectId, ref: "User" },

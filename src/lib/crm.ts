@@ -1,6 +1,6 @@
-﻿export const CRM_STATUSES = ["NEW", "IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"] as const;
+export const CRM_STATUSES = ["NEW", "IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"] as const;
 export const CRM_PRIORITIES = ["LOW", "NORMAL", "HIGH", "CRITICAL"] as const;
-export const CRM_CATEGORIES = ["DELIVERY_DELAY", "TRACKING", "NOT_RECEIVED", "WRONG_OR_MISSING", "REFUND_PAYMENT", "CHINA_WAREHOUSE", "OTHER"] as const;
+export const CRM_CATEGORIES = ["DELIVERY", "DELIVERY_DELAY", "TRACKING", "NOT_RECEIVED", "WRONG_OR_MISSING", "REFUND_PAYMENT", "CHINA_WAREHOUSE", "OTHER"] as const;
 export const CRM_MESSAGE_TYPES = ["CUSTOMER_MESSAGE", "OPERATOR_RESPONSE", "INTERNAL_NOTE"] as const;
 
 export const CRM_STATUS_LABELS: Record<string, string> = {
@@ -20,6 +20,7 @@ export const CRM_PRIORITY_LABELS: Record<string, string> = {
 };
 
 export const CRM_CATEGORY_LABELS: Record<string, string> = {
+  DELIVERY: "Yetkazib berish bo'yicha",
   DELIVERY_DELAY: "Buyurtma kechikishi",
   TRACKING: "Tracking muammosi",
   NOT_RECEIVED: "Mahsulot kelmagan",
