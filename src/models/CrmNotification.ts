@@ -22,6 +22,8 @@ const CrmNotificationSchema = new Schema(
         "TICKET_APPROVAL_REQUESTED",
         "TICKET_APPROVED",
         "TICKET_RETURNED",
+        "CONSULTATION_REQUESTED",
+        "CONSULTATION_ANSWERED",
       ],
       required: true,
       index: true,

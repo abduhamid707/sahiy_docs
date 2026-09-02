@@ -96,6 +96,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const changes: string[] = [];
   const data = parsed.data;
   const update: any = { lastInteractionAt: new Date() };
+  const assignedOperatorId = ticket.assignedTo?.toString();
+  const isCollaboratorOnly =
+    user.role === "SUPPORT" &&
+    Boolean(assignedOperatorId) &&
+    assignedOperatorId !== user.id &&
+    !canReassignTickets(user);
+  if (isCollaboratorOnly) {
+    return NextResponse.json({ error: "Ticket sozlamalarini faqat mas'ul operator o'zgartiradi" }, { status: 403 });
+  }
 
   if (data.status && ["RESOLVED", "CLOSED"].includes(data.status)) {
     return NextResponse.json(

@@ -5,8 +5,8 @@ import dbConnect from "@/lib/mongodb";
 import { Ticket } from "@/models/Ticket";
 import { TicketMessage } from "@/models/TicketMessage";
 import { CRM_MESSAGE_TYPES } from "@/lib/crm";
-import { canAccessTicket, canUseCrm } from "@/lib/support/access";
-import { canMutateCrm } from "@/lib/support/permissions";
+import { canAccessTicket } from "@/lib/support/access";
+import { canMutateCrm, canSeeAllTickets } from "@/lib/support/permissions";
 import { getAuthUser } from "@/lib/auth-helper";
 
 const schema = z.object({
@@ -24,6 +24,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const ticket = await Ticket.findById(id);
   if (!ticket) return NextResponse.json({ error: "Ticket topilmadi" }, { status: 404 });
   if (!canAccessTicket(user, ticket)) return NextResponse.json({ error: "Ruxsat yo'q" }, { status: 403 });
+  const assignedId = ticket.assignedTo?.toString();
+  if (parsed.data.type !== "INTERNAL_NOTE" && assignedId !== user.id && !canSeeAllTickets(user)) {
+    return NextResponse.json({ error: "Mijoz bilan faqat mas'ul operator ishlaydi" }, { status: 403 });
+  }
   const message = await TicketMessage.create({ ticketId: id, type: parsed.data.type, body: parsed.data.body, author: user.id, authorName: user.name, channel: "MANUAL", attachments: parsed.data.attachment ? [parsed.data.attachment] : [] });
   const update: any = { lastInteractionAt: new Date() };
   if (parsed.data.type === "OPERATOR_RESPONSE" && !ticket.firstResponseAt) update.firstResponseAt = new Date();

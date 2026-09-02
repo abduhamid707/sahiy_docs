@@ -15,6 +15,7 @@ const TicketSchema = new Schema(
     category: { type: String, enum: ["DELIVERY", "DELIVERY_DELAY", "TRACKING", "NOT_RECEIVED", "WRONG_OR_MISSING", "REFUND_PAYMENT", "CARGO_PAYMENT", "CHINA_WAREHOUSE", "OTHER"], default: "OTHER", index: true },
     priority: { type: String, enum: ["LOW", "NORMAL", "HIGH", "CRITICAL"], default: "NORMAL", index: true },
     assignedTo: { type: Schema.Types.ObjectId, ref: "User", index: true },
+    collaborators: [{ type: Schema.Types.ObjectId, ref: "User" }],
     createdBy: { type: Schema.Types.ObjectId, ref: "User" },
     // OPEN eski call-center ticketlari uchun legacy qiymat.
     status: { type: String, enum: ["OPEN", "NEW", "IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"], default: "NEW", index: true },
@@ -50,6 +51,7 @@ const TicketSchema = new Schema(
 );
 
 TicketSchema.index({ assignedTo: 1, status: 1 });
+TicketSchema.index({ collaborators: 1, status: 1 });
 TicketSchema.index({ priority: 1, deadlineAt: 1 });
 TicketSchema.index({ callerId: "text", callerName: "text", callerPhone: "text", orderId: "text", ticketNumber: "text", problem: "text" });
 

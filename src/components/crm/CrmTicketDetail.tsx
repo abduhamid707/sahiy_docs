@@ -88,12 +88,18 @@ export default function CrmTicketDetail({
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [body, setBody] = useState("");
-  const [type, setType] = useState("OPERATOR_RESPONSE");
+  const initialAssignedId = ticket.assignedTo?._id || ticket.assignedTo;
+  const [type, setType] = useState(initialAssignedId === currentUser.id || canManage ? "OPERATOR_RESPONSE" : "INTERNAL_NOTE");
   const [attachment, setAttachment] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [smsText, setSmsText] = useState(ticket.resolutionSmsText || "");
   const [reviewComment, setReviewComment] = useState("");
+  const [consultationOpen, setConsultationOpen] = useState(false);
+  const [consultationOperator, setConsultationOperator] = useState("");
+  const [consultationQuestion, setConsultationQuestion] = useState("");
+  const [consultationReply, setConsultationReply] = useState("");
+  const [replyingTo, setReplyingTo] = useState("");
   const overdue = isOverdue(ticket, nowIso);
   const publicId = ticketPublicId(ticket);
   const closed = ["RESOLVED", "CLOSED"].includes(ticket.status);
@@ -102,6 +108,7 @@ export default function CrmTicketDetail({
   const isSuperAdmin = currentUser.role === "SUPER_ADMIN";
   const assignedId = ticket.assignedTo?._id || ticket.assignedTo;
   const isAssignedOperator = currentUser.role === "SUPPORT" && assignedId === currentUser.id;
+  const canWriteCustomerReply = isAssignedOperator || canManage;
   const patch = async (data: any, success: string) => {
     setLoading(true);
     try {
@@ -212,6 +219,52 @@ export default function CrmTicketDetail({
       setLoading(false);
     }
   };
+  const requestConsultation = async () => {
+    if (!consultationOperator) return toast.error("Operatorni tanlang");
+    if (consultationQuestion.trim().length < 3) return toast.error("Savolni yozing");
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/crm/tickets/${ticket._id}/consultations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "REQUEST", operatorId: consultationOperator, question: consultationQuestion.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setConsultationOpen(false);
+      setConsultationOperator("");
+      setConsultationQuestion("");
+      toast.success("Maslahat so‘rovi yuborildi");
+      window.dispatchEvent(new Event("crm-notifications-changed"));
+      router.refresh();
+    } catch (error: any) {
+      toast.error(error.message || "Maslahat so‘rovi yuborilmadi");
+    } finally {
+      setLoading(false);
+    }
+  };
+  const respondConsultation = async (requestId: string) => {
+    if (consultationReply.trim().length < 2) return toast.error("Javobni yozing");
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/crm/tickets/${ticket._id}/consultations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "RESPOND", requestId, response: consultationReply.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setReplyingTo("");
+      setConsultationReply("");
+      toast.success("Maslahat javobi yuborildi");
+      window.dispatchEvent(new Event("crm-notifications-changed"));
+      router.refresh();
+    } catch (error: any) {
+      toast.error(error.message || "Javob yuborilmadi");
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -244,6 +297,12 @@ export default function CrmTicketDetail({
             </p>
           </div>
         </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+        {!closed && isAssignedOperator && (
+          <Button onClick={() => setConsultationOpen(true)} disabled={loading} size="sm" variant="outline" className="h-9 rounded-lg text-xs">
+            <MessageCircle /> Maslahat so‘rash
+          </Button>
+        )}
         {closed ? (
           <span className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white">
             <ShieldCheck className="h-3.5 w-3.5" /> Admin tasdiqladi
@@ -267,6 +326,7 @@ export default function CrmTicketDetail({
             <Send /> Adminga yuborish
           </Button>
         ) : null}
+        </div>
       </div>
 
       {approvalStatus === "RETURNED" && (
@@ -334,6 +394,35 @@ export default function CrmTicketDetail({
           )}
         </DialogContent>
       </Dialog>
+      <Dialog open={consultationOpen} onOpenChange={(open) => !loading && setConsultationOpen(open)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Boshqa operatordan maslahat so‘rash</DialogTitle>
+            <DialogDescription>Ticket sizda qoladi. Tanlangan operator savolga ichki javob beradi.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold">Operator</label>
+              <Select value={consultationOperator} onValueChange={(value) => value && setConsultationOperator(value)}>
+                <SelectTrigger><SelectValue>{agents.find((agent: any) => agent._id === consultationOperator)?.name || "Operatorni tanlang"}</SelectValue></SelectTrigger>
+                <SelectContent>
+                  {agents.filter((agent: any) => agent._id !== currentUser.id).map((agent: any) => <SelectItem key={agent._id} value={agent._id}>{agent.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold">Savol *</label>
+              <Textarea autoFocus value={consultationQuestion} onChange={(event) => setConsultationQuestion(event.target.value)} placeholder="Masalan: Bu buyurtmaning Xitoy omboridagi holatini tekshirib bering..." className="min-h-28" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConsultationOpen(false)} disabled={loading}>Bekor qilish</Button>
+            <Button onClick={requestConsultation} disabled={loading || !consultationOperator || consultationQuestion.trim().length < 3} className="bg-brand-blue text-white hover:bg-brand-blue-hover">
+              {loading ? <Loader2 className="animate-spin" /> : <Send />} Yuborish
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="grid gap-3 xl:h-[calc(100dvh-9.75rem)] xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="flex h-[calc(100dvh-9.5rem)] min-h-[32rem] flex-col gap-2.5 xl:h-auto xl:min-h-0">
           {/* Task funksiyasi hozircha mahsulot oqimidan olib tashlangan. */}
@@ -361,6 +450,8 @@ export default function CrmTicketDetail({
                 const isOperator = message.type === "OPERATOR_RESPONSE";
                 const isCustomer = message.type === "CUSTOMER_MESSAGE";
                 const isSystem = message.type === "SYSTEM_EVENT";
+                const isConsultation = message.metadata?.kind === "CONSULTATION";
+                const canAnswerConsultation = isConsultation && message.metadata?.status === "PENDING" && String(message.metadata?.requestedTo) === currentUser.id;
                 return (
                   <div
                     key={message._id}
@@ -424,6 +515,31 @@ export default function CrmTicketDetail({
                       >
                         {message.body}
                       </p>
+                      {isConsultation && (
+                        <div className="mt-2 space-y-2 border-t border-amber-300/70 pt-2 text-xs">
+                          <p className="font-semibold">Maslahat: {message.metadata.requestedByName} → {message.metadata.requestedToName}</p>
+                          {message.metadata.status === "ANSWERED" ? (
+                            <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-2 dark:border-emerald-900 dark:bg-emerald-950/30">
+                              <p className="mb-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{message.metadata.respondedByName} javobi</p>
+                              <p className="whitespace-pre-wrap leading-5">{message.metadata.response}</p>
+                            </div>
+                          ) : canAnswerConsultation ? (
+                            replyingTo === message._id ? (
+                              <div className="space-y-2">
+                                <Textarea value={consultationReply} onChange={(event) => setConsultationReply(event.target.value)} placeholder="Ichki javobingizni yozing..." className="min-h-20 bg-background" />
+                                <div className="flex justify-end gap-2">
+                                  <Button size="sm" variant="outline" onClick={() => { setReplyingTo(""); setConsultationReply(""); }}>Bekor qilish</Button>
+                                  <Button size="sm" onClick={() => respondConsultation(message._id)} disabled={loading || consultationReply.trim().length < 2}>{loading ? <Loader2 className="animate-spin" /> : <Send />} Javob berish</Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <Button size="sm" onClick={() => setReplyingTo(message._id)}>Javob berish</Button>
+                            )
+                          ) : (
+                            <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-300">Javob kutilmoqda</p>
+                          )}
+                        </div>
+                      )}
                       {message.attachments?.map((a: any) => (
                         <a
                           key={a.url}
@@ -450,7 +566,7 @@ export default function CrmTicketDetail({
             <CardContent className="p-3">
               <div className="mb-2 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
                 <div className="flex gap-1.5">
-                  <button
+                  {canWriteCustomerReply && <button
                     onClick={() => setType("OPERATOR_RESPONSE")}
                     className={cn(
                       "rounded-md px-2.5 py-1.5 text-[11px] font-bold",
@@ -460,7 +576,7 @@ export default function CrmTicketDetail({
                     )}
                   >
                     Javob
-                  </button>
+                  </button>}
                   <button
                     onClick={() => setType("INTERNAL_NOTE")}
                     className={cn(
@@ -473,7 +589,7 @@ export default function CrmTicketDetail({
                     Ichki izoh
                   </button>
                 </div>
-                <button
+                {canWriteCustomerReply && <button
                   onClick={() => setType("CUSTOMER_MESSAGE")}
                   className={cn(
                     "text-left text-[10px] font-semibold sm:text-right",
@@ -483,7 +599,7 @@ export default function CrmTicketDetail({
                   )}
                 >
                   Qo‘ng‘iroqdagi mijoz xabarini qayd etish
-                </button>
+                </button>}
               </div>
               <Textarea
                 value={body}
@@ -567,7 +683,7 @@ export default function CrmTicketDetail({
                     onValueChange={(v) =>
                       v && patch({ status: v }, "Status yangilandi")
                     }
-                    disabled={loading}
+                    disabled={loading || !canWriteCustomerReply}
                   >
                     <SelectTrigger className="h-8 rounded-md text-[11px]">
                       <SelectValue>
@@ -596,7 +712,7 @@ export default function CrmTicketDetail({
                     onValueChange={(v) =>
                       v && patch({ priority: v }, "Muhimlik yangilandi")
                     }
-                    disabled={loading}
+                    disabled={loading || !canWriteCustomerReply}
                   >
                     <SelectTrigger className="h-8 rounded-md text-[11px]">
                       <SelectValue>
