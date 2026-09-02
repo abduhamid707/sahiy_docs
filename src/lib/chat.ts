@@ -15,8 +15,13 @@ export async function ensureGeneralConversation(userId?: string) {
   return conversation;
 }
 
+export function chatEntityId(value: any): string {
+  const id = value?._id ?? value;
+  return id?.toString?.() || "";
+}
+
 export function canAccessConversation(conversation: any, userId: string) {
-  return conversation?.isPublic || conversation?.participants?.some((participant: any) => (participant?._id || participant).toString() === userId);
+  return conversation?.isPublic || conversation?.participants?.some((participant: any) => chatEntityId(participant) === userId);
 }
 
 export function chatTime(value?: string | Date) {

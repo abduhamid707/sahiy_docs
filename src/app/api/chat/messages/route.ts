@@ -3,7 +3,7 @@ import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import dbConnect from "@/lib/mongodb";
-import { canAccessConversation, chatTime, ensureGeneralConversation } from "@/lib/chat";
+import { canAccessConversation, chatEntityId, chatTime, ensureGeneralConversation } from "@/lib/chat";
 import { sendChatPush } from "@/lib/chatNotifications";
 import { Conversation } from "@/models/Conversation";
 import { Message } from "@/models/Message";
@@ -17,10 +17,11 @@ const messageSchema = z.object({
 
 function serializeMessage(message: any, userId: string) {
   const sender = message.sender;
+  const senderId = chatEntityId(sender);
   return {
-    id: message._id.toString(), sender: sender?.name || "Foydalanuvchi", senderId: (sender?._id || sender).toString(), senderImage: sender?.image,
+    id: chatEntityId(message), sender: sender?.name || "O‘chirilgan foydalanuvchi", senderId, senderImage: sender?.image,
     text: message.text, file: message.file?.url ? message.file : undefined, repliesTo: message.repliesTo,
-    createdAt: message.createdAt, time: chatTime(message.createdAt), isSelf: (sender?._id || sender).toString() === userId,
+    createdAt: message.createdAt, time: chatTime(message.createdAt), isSelf: senderId === userId,
     seenCount: message.seenBy?.length || 0, editedAt: message.editedAt,
   };
 }
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
     const conversation = requested === "general" ? await ensureGeneralConversation(userId) : await Conversation.findById(requested);
     if (!conversation) return NextResponse.json({ success: false, error: "Chat topilmadi" }, { status: 404 });
     if (!canAccessConversation(conversation, userId)) return NextResponse.json({ success: false, error: "Bu chatga ruxsat yo‘q" }, { status: 403 });
-    if (conversation.isPublic && !conversation.participants.some((id: any) => id.toString() === userId)) await Conversation.updateOne({ _id: conversation._id }, { $addToSet: { participants: userId } });
+    if (conversation.isPublic && !conversation.participants?.some((id: any) => chatEntityId(id) === userId)) await Conversation.updateOne({ _id: conversation._id }, { $addToSet: { participants: userId } });
     await Message.updateMany({ conversationId: conversation._id, sender: { $ne: userId }, seenBy: { $ne: userId } }, { $addToSet: { seenBy: userId } });
     const latest = await Message.find({ conversationId: conversation._id }).populate("sender", "name image").sort({ createdAt: -1 }).limit(100).lean();
     return NextResponse.json({ success: true, conversationId: conversation._id.toString(), data: latest.reverse().map((message) => serializeMessage(message, userId)) });
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
     await Conversation.updateOne({ _id: conversation._id }, { $set: { lastMessage: message._id, lastMessageAt: message.createdAt }, $addToSet: { participants: userId } });
     const populated = await Message.findById(message._id).populate("sender", "name image").lean();
     const serialized = serializeMessage(populated, userId);
-    const participantIds = conversation.participants.map((id: any) => id.toString());
+    const participantIds = (conversation.participants || []).map(chatEntityId).filter(Boolean);
     after(() => sendChatPush({ participantIds, isPublic: conversation.isPublic, senderId: userId, senderName: session.user?.name || "Sahiy", conversationId: conversation._id.toString(), conversationName: conversation.type === "GROUP" ? conversation.name || "Sahiy Team" : session.user?.name || "Yangi xabar", text: parsed.data.file ? `📎 ${parsed.data.file.name}` : parsed.data.text }).catch((error) => console.error("Chat push error:", error)));
     return NextResponse.json({ success: true, data: serialized }, { status: 201 });
   } catch (error: any) {

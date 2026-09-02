@@ -4,7 +4,7 @@ import { z } from "zod";
 import { Types } from "mongoose";
 import { auth } from "@/auth";
 import dbConnect from "@/lib/mongodb";
-import { canAccessConversation } from "@/lib/chat";
+import { canAccessConversation, chatEntityId } from "@/lib/chat";
 import { Conversation } from "@/models/Conversation";
 import { Message } from "@/models/Message";
 import { User } from "@/models/User";
@@ -15,7 +15,7 @@ const patchSchema = z.discriminatedUnion("action", [
 ]);
 
 function canManage(conversation: any, userId: string, role?: string) {
-  return role === "SUPER_ADMIN" || conversation.createdBy?.toString() === userId || conversation.admins?.some((id: any) => id.toString() === userId);
+  return role === "SUPER_ADMIN" || chatEntityId(conversation.createdBy) === userId || conversation.admins?.some((id: any) => chatEntityId(id) === userId);
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {

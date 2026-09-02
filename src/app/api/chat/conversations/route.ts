@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import dbConnect from "@/lib/mongodb";
-import { ensureGeneralConversation } from "@/lib/chat";
+import { chatEntityId, ensureGeneralConversation } from "@/lib/chat";
 import { Conversation } from "@/models/Conversation";
 import { Message } from "@/models/Message";
 import { User } from "@/models/User";
@@ -27,19 +27,20 @@ export async function GET() {
       .lean();
 
     const data = await Promise.all(conversations.map(async (conversation: any) => {
-      const other = conversation.type === "PRIVATE" ? conversation.participants.find((participant: any) => participant._id.toString() !== userId) : null;
+      const participants = (conversation.participants || []).filter(Boolean);
+      const other = conversation.type === "PRIVATE" ? participants.find((participant: any) => chatEntityId(participant) !== userId) : null;
       const last = conversation.lastMessage || await Message.findOne({ conversationId: conversation._id }).populate("sender", "name").sort({ createdAt: -1 }).lean();
       const unreadCount = await Message.countDocuments({ conversationId: conversation._id, sender: { $ne: userId }, seenBy: { $ne: userId } });
       const fileName = last?.file?.url ? last.file.name : null;
-      const isAdmin = conversation.admins?.some((id: any) => id.toString() === userId) || conversation.createdBy?.toString() === userId || (session.user as any).role === "SUPER_ADMIN";
+      const isAdmin = conversation.admins?.some((id: any) => chatEntityId(id) === userId) || chatEntityId(conversation.createdBy) === userId || (session.user as any).role === "SUPER_ADMIN";
       return {
         id: conversation._id.toString(), name: conversation.type === "PRIVATE" ? other?.name || "Shaxsiy chat" : conversation.name || "Guruh", type: conversation.type,
         avatar: conversation.type === "PRIVATE" ? other?.image : conversation.avatar, description: conversation.description || "",
-        membersCount: conversation.isPublic ? await User.countDocuments({}) : conversation.participants.length,
-        participantIds: conversation.participants.map((participant: any) => participant._id.toString()),
+        membersCount: conversation.isPublic ? await User.countDocuments({}) : participants.length,
+        participantIds: participants.map(chatEntityId).filter(Boolean),
         lastMessage: last ? (fileName ? `📎 ${fileName}` : last.text) : "Hali xabar yo‘q", lastSender: last?.sender?.name || "",
         lastMessageAt: last?.createdAt || conversation.lastMessageAt || conversation.createdAt, unreadCount, isPublic: !!conversation.isPublic,
-        pinned: conversation.pinnedBy?.some((id: any) => id.toString() === userId) || false,
+        pinned: conversation.pinnedBy?.some((id: any) => chatEntityId(id) === userId) || false,
         canManage: conversation.type === "GROUP" && isAdmin,
       };
     }));
