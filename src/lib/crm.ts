@@ -91,15 +91,18 @@ export function getTashkentStartOfToday(now: Date = new Date()): Date {
   );
 }
 
-export function normalizeUzPhone(value: string) {
-  const digits = value.replace(/\D/g, "");
+export function normalizeUzPhone(value?: string | null) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (!digits) return "";
   let local = digits.startsWith("998") ? digits.slice(3) : digits;
   if (local.startsWith("0")) local = local.slice(1);
   return `+998${local.slice(0, 9)}`;
 }
 
-export function formatUzPhone(value: string) {
-  const local = normalizeUzPhone(value).slice(4);
+export function formatUzPhone(value?: string | null) {
+  const normalized = normalizeUzPhone(value);
+  if (!normalized) return "—";
+  const local = normalized.slice(4);
   const groups = [local.slice(0, 2), local.slice(2, 5), local.slice(5, 7), local.slice(7, 9)].filter(Boolean);
   return groups.length ? `+998 ${groups.join(" ")}` : "+998";
 }
