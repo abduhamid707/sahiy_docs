@@ -1,10 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { after, NextResponse } from "next/server";
+import { isValidObjectId } from "mongoose";
 import { z } from "zod";
 import dbConnect from "@/lib/mongodb";
 import { Ticket } from "@/models/Ticket";
 import { TicketMessage } from "@/models/TicketMessage";
 import { TicketTask } from "@/models/TicketTask";
+import { User } from "@/models/User";
 import { CRM_PRIORITIES, CRM_STATUSES, CRM_STATUS_LABELS, CRM_PRIORITY_LABELS } from "@/lib/crm";
 import { canAccessTicket, canUseCrm } from "@/lib/support/access";
 import { canApproveTicketResolution, canReassignTickets, canMutateCrm } from "@/lib/support/permissions";
@@ -116,11 +118,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (data.assignedTo !== undefined) {
     const current = ticket.assignedTo?.toString() || null;
     const isSelfClaim = !current && data.assignedTo === user.id && (user.role === "SUPPORT" || user.role === "OPERATOR");
-    if (!canReassignTickets(user) && !isSelfClaim) {
+    const isAssignedOperatorTransfer =
+      current === user.id &&
+      user.role === "SUPPORT" &&
+      Boolean(data.assignedTo) &&
+      data.assignedTo !== current;
+    if (!canReassignTickets(user) && !isSelfClaim && !isAssignedOperatorTransfer) {
       return NextResponse.json({ error: "Qayta biriktirishga ruxsat yo'q" }, { status: 403 });
     }
+    let assigneeName = "";
+    if (data.assignedTo) {
+      if (!isValidObjectId(data.assignedTo)) {
+        return NextResponse.json({ error: "Tanlangan operator noto'g'ri" }, { status: 400 });
+      }
+      const assignee = await User.findOne({ _id: data.assignedTo, role: "SUPPORT" })
+        .select("name")
+        .lean();
+      if (!assignee) {
+        return NextResponse.json({ error: "Tanlangan operator topilmadi" }, { status: 400 });
+      }
+      assigneeName = assignee.name;
+    }
     update.assignedTo = data.assignedTo || null;
-    changes.push("Mas'ul operator o'zgartirildi");
+    changes.push(data.assignedTo ? `Mas'ul operator: ${assigneeName}` : "Ticket navbatga qaytarildi");
     if (data.assignedTo && data.assignedTo !== current) {
       const assignedTo = data.assignedTo;
       after(async () => {

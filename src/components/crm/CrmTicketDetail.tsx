@@ -613,7 +613,7 @@ export default function CrmTicketDetail({
                   </Select>
                 </div>
               </div>
-              {canManage ? (
+              {canManage || isAssignedOperator ? (
                 <div>
                   <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">
                     Mas’ul operator
@@ -634,7 +634,7 @@ export default function CrmTicketDetail({
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="UNASSIGNED">Navbatda</SelectItem>
+                      {canManage && <SelectItem value="UNASSIGNED">Navbatda</SelectItem>}
                       {agents.map((a: any) => (
                         <SelectItem key={a._id} value={a._id}>
                           {a.name}
