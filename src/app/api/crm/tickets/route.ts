@@ -10,8 +10,15 @@ import { canSeeAllTickets, canMutateCrm } from "@/lib/support/permissions";
 import { notifyTicketAssigned } from "@/lib/support/notifications";
 import { createCrmNotification } from "@/lib/crmNotifications";
 
+const attachmentSchema = z.object({
+  url: z.string().min(1),
+  name: z.string().min(1),
+  mimeType: z.string().optional(),
+  size: z.number().max(5 * 1024 * 1024).optional(),
+});
+
 const createSchema = z.object({
-  customerId: z.string().trim().min(1, "User ID majburiy").max(100),
+  customerId: z.string().trim().max(100).optional().or(z.literal("")),
   customerName: z.string().trim().max(120).optional().or(z.literal("")),
   phone: z.string().trim().max(100).optional().or(z.literal("")),
   orderId: z.string().trim().max(100).optional().or(z.literal("")),
@@ -21,7 +28,12 @@ const createSchema = z.object({
   priority: z.enum(CRM_PRIORITIES).default("NORMAL"),
   status: z.enum(CRM_STATUSES).default("NEW"),
   deadlineAt: z.string().datetime().optional().or(z.literal("")),
-  attachment: z.object({ url: z.string().min(1), name: z.string().min(1), mimeType: z.string().optional(), size: z.number().optional() }).optional(),
+  attachment: attachmentSchema.optional(),
+  attachments: z.array(attachmentSchema).max(10, "Ko'pi bilan 10 ta fayl biriktirish mumkin").optional(),
+}).superRefine((data, ctx) => {
+  if (!data.customerId?.trim() && !data.orderId?.trim()) {
+    ctx.addIssue({ code: "custom", message: "User ID yoki Order ID dan birini kiriting", path: ["customerId"] });
+  }
 });
 
 import { getAuthUser } from "@/lib/auth-helper";
@@ -87,19 +99,20 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message || "Ma'lumotlar noto'g'ri" }, { status: 400 });
   await dbConnect();
   const data = parsed.data;
+  const attachments = data.attachments || (data.attachment ? [data.attachment] : []);
   const assignedTo = canSeeAllTickets(user) ? (data.assignedTo || undefined) : user.id;
   const deadlineAt = data.deadlineAt ? new Date(data.deadlineAt) : new Date(Date.now() + (data.priority === "CRITICAL" ? 4 : data.priority === "HIGH" ? 12 : 24) * 3600000);
   const ticket = await Ticket.create({
-    callerId: data.customerId, callerName: data.customerName, callerPhone: data.phone ? normalizeUzPhone(data.phone) : undefined, orderId: data.orderId || undefined,
+    callerId: data.customerId || undefined, callerName: data.customerName, callerPhone: data.phone ? normalizeUzPhone(data.phone) : undefined, orderId: data.orderId || undefined,
     category: data.category, problem: data.description, priority: data.priority, status: data.status,
     assignedTo, createdBy: user.id, deadlineAt, lastInteractionAt: new Date(),
-    attachments: data.attachment ? [data.attachment] : [], origin: "MANUAL", channel: "MANUAL",
+    attachments, origin: "MANUAL", channel: "MANUAL",
   });
   ticket.ticketNumber = `TKT-${new Date().getFullYear()}-${ticket._id.toString().slice(-6).toUpperCase()}`;
   await ticket.save();
   await TicketMessage.create([
     { ticketId: ticket._id, type: "SYSTEM_EVENT", body: "Ticket yaratildi", author: user.id, authorName: user.name },
-    { ticketId: ticket._id, type: "CUSTOMER_MESSAGE", body: data.description, authorName: data.customerName, attachments: data.attachment ? [data.attachment] : [] },
+    { ticketId: ticket._id, type: "CUSTOMER_MESSAGE", body: data.description, authorName: data.customerName, attachments },
   ]);
   if (assignedTo && assignedTo !== user.id) {
     after(async () => {

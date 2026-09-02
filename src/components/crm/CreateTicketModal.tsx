@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import {
   X,
   UploadCloud,
@@ -80,9 +80,10 @@ export default function CreateTicketModal({
   });
 
   const [attachments, setAttachments] = useState<
-    Array<{ url: string; name: string; size?: number }>
+    Array<{ url: string; name: string; mimeType?: string; size?: number }>
   >([]);
   const [uploading, setUploading] = useState(false);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const formatDisplayDateTime = (isoOrLocalStr: string) => {
@@ -278,14 +279,19 @@ export default function CreateTicketModal({
     onClose();
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
+  const uploadFiles = useCallback(async (incomingFiles: File[]) => {
+    if (!incomingFiles.length || uploading) return;
+    const remainingSlots = Math.max(0, 10 - attachments.length);
+    if (!remainingSlots) return toast.error("Ko‘pi bilan 10 ta fayl biriktirish mumkin");
+    const selectedFiles = incomingFiles.slice(0, remainingSlots);
+    if (incomingFiles.length > remainingSlots) toast.warning(`Faqat ${remainingSlots} ta fayl qo‘shildi`);
     setUploading(true);
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      for (const file of selectedFiles) {
+        if (file.size > 5 * 1024 * 1024) {
+          toast.error(`${file.name || "Fayl"} 5 MB dan katta`);
+          continue;
+        }
         const formData = new FormData();
         formData.append("file", file);
 
@@ -298,25 +304,42 @@ export default function CreateTicketModal({
           const uploaded = await res.json();
           setAttachments((prev) => [
             ...prev,
-            { url: uploaded.url, name: uploaded.name, size: uploaded.size },
+            { url: uploaded.url, name: uploaded.name, mimeType: uploaded.mimeType, size: uploaded.size },
           ]);
         } else {
-          toast.error(`${file.name} yuklanmadi.`);
+          const error = await res.json().catch(() => null);
+          toast.error(error?.error || `${file.name} yuklanmadi`);
         }
       }
-    } catch (err) {
+    } catch {
       toast.error("Fayl yuklashda xatolik");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
+  }, [attachments.length, uploading]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePaste = (event: ClipboardEvent) => {
+      const files = Array.from(event.clipboardData?.files || []);
+      if (!files.length) return;
+      event.preventDefault();
+      void uploadFiles(files);
+    };
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [isOpen, uploadFiles]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    void uploadFiles(Array.from(e.target.files || []));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
-    if (!form.customerId.trim()) {
-      const message = "User ID kiritilishi shart";
+    if (!form.customerId.trim() && !form.orderId.trim()) {
+      const message = "User ID yoki Order ID dan birini kiriting";
       setFormError(message);
       return toast.error(message);
     }
@@ -345,7 +368,7 @@ export default function CreateTicketModal({
         priority: form.priority,
         status: form.status,
         deadlineAt: deadline.toISOString(),
-        attachment: attachments.length > 0 ? attachments[0] : undefined,
+        attachments,
       };
 
       const res = await fetch("/api/crm/tickets", {
@@ -406,7 +429,7 @@ export default function CreateTicketModal({
                     Kiritilgan ma’lumotlar o‘chib ketadi
                   </h3>
                   <p id="discard-ticket-description" className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Formani yopsangiz, saqlanmagan User ID, izoh va biriktirilgan fayllarni qayta tiklab bo‘lmaydi.
+                    Formani yopsangiz, kiritilgan ma’lumotlar va biriktirilgan fayllarni qayta tiklab bo‘lmaydi.
                   </p>
                 </div>
               </div>
@@ -426,11 +449,10 @@ export default function CreateTicketModal({
           {/* Client Info */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">User ID *</Label>
+              <Label className="text-xs font-semibold">User ID</Label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  required
                   value={form.customerId}
                   onChange={(e) => setForm({ ...form, customerId: e.target.value })}
                   placeholder="User ID"
@@ -666,7 +688,17 @@ export default function CreateTicketModal({
           )}
 
           {/* Compact Attachment Upload */}
-          <div className="space-y-2 pt-2">
+          <div
+            className={`space-y-2 rounded-lg border border-dashed p-2.5 transition ${isDraggingFiles ? "border-blue-500 bg-blue-500/5" : "border-transparent"}`}
+            onDragEnter={(event) => { event.preventDefault(); setIsDraggingFiles(true); }}
+            onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; setIsDraggingFiles(true); }}
+            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setIsDraggingFiles(false); }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setIsDraggingFiles(false);
+              void uploadFiles(Array.from(event.dataTransfer.files || []));
+            }}
+          >
             <div className="flex items-center justify-between">
               <Label className="text-xs font-semibold flex items-center gap-1">
                 <Paperclip className="w-3.5 h-3.5" />
@@ -695,6 +727,7 @@ export default function CreateTicketModal({
                 Fayl tanlash
               </Button>
             </div>
+            <p className="text-[10px] text-muted-foreground">Sudrab tashlang yoki Ctrl+V bosing · har biri 5 MB gacha · ko‘pi bilan 10 ta</p>
 
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-1">
