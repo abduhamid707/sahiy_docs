@@ -463,7 +463,19 @@ export default function CrmInbox({
                     <Link href={`/crm/tickets/${t._id}`} className="font-semibold hover:text-blue-600 hover:underline">{t.callerName || "Noma'lum"}</Link>
                     <button onClick={() => copyValue(normalizeUzPhone(t.callerPhone), "Telefon raqami")} className="block cursor-copy text-left text-xs text-muted-foreground hover:text-foreground" aria-label="Telefon raqamini nusxalash" title="Bosib bo‘shliqsiz nusxalash">{formatUzPhone(t.callerPhone)}</button>
                   </td>
-                  <td className="px-4 py-3 text-xs">{t.orderId || "—"}</td>
+                  <td className="px-4 py-3 text-xs">
+                    {t.orderId ? (
+                      <button
+                        onClick={() => copyValue(t.orderId, "Order ID")}
+                        className="cursor-copy hover:text-blue-600 hover:underline text-left block"
+                        title="Bosib nusxalash"
+                      >
+                        {t.orderId}
+                      </button>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="max-w-40 px-4 py-3 text-xs">
                     {CRM_CATEGORY_LABELS[t.category || "OTHER"]}
                   </td>
@@ -488,7 +500,7 @@ export default function CrmInbox({
         <div className="divide-y lg:hidden">
           {rows.map((t) => {
             return <div key={t._id} className="p-4">
-              <div className="flex justify-between gap-3"><div className="min-w-0"><Link href={`/crm/tickets/${t._id}`} className="text-xs font-bold text-blue-600 hover:underline">{ticketPublicId(t)}</Link><Link href={`/crm/tickets/${t._id}`} className="mt-1 block truncate font-semibold hover:text-blue-600">{t.callerName || "Noma'lum"}</Link><div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"><button onClick={() => copyValue(normalizeUzPhone(t.callerPhone), "Telefon raqami")} className="cursor-copy truncate text-left" title="Bosib bo‘shliqsiz nusxalash">{formatUzPhone(t.callerPhone)}</button><span className="truncate">· {t.orderId || "Order yo'q"}</span></div></div><span className="shrink-0 text-xs font-semibold text-muted-foreground">{formatDuration(t.createdAt, t.resolvedAt || nowIso)}</span></div>
+              <div className="flex justify-between gap-3"><div className="min-w-0"><Link href={`/crm/tickets/${t._id}`} className="text-xs font-bold text-blue-600 hover:underline">{ticketPublicId(t)}</Link><Link href={`/crm/tickets/${t._id}`} className="mt-1 block truncate font-semibold hover:text-blue-600">{t.callerName || "Noma'lum"}</Link><div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"><button onClick={() => copyValue(normalizeUzPhone(t.callerPhone), "Telefon raqami")} className="cursor-copy truncate text-left hover:text-blue-600 hover:underline" title="Bosib nusxalash">{formatUzPhone(t.callerPhone)}</button>{t.orderId ? <button onClick={() => copyValue(t.orderId, "Order ID")} className="truncate cursor-copy hover:text-blue-600 hover:underline">· {t.orderId}</button> : <span className="truncate">· Order yo'q</span>}</div></div><span className="shrink-0 text-xs font-semibold text-muted-foreground">{formatDuration(t.createdAt, t.resolvedAt || nowIso)}</span></div>
               <Link href={`/crm/tickets/${t._id}`} className="mt-3 block line-clamp-2 text-sm">{t.problem}</Link>
               <div className={cn("mt-3 grid gap-2", canAssign ? "grid-cols-3" : "grid-cols-2")}>
                 {canAssign && <Select value={t.assignedTo?._id || "UNASSIGNED"} onValueChange={(value) => value && updateTicket(t, "assignedTo", value)} disabled={updating === `${t._id}:assignedTo`}><SelectTrigger className="h-9 min-w-0 rounded-md px-2 text-[10px]"><SelectValue>{t.assignedTo?.name || "Navbatda"}</SelectValue></SelectTrigger><SelectContent><SelectItem value="UNASSIGNED">Navbatda</SelectItem>{agents.map((agent) => <SelectItem key={agent._id} value={agent._id}>{agent.name}</SelectItem>)}</SelectContent></Select>}

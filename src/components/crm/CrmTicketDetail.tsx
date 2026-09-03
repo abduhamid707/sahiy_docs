@@ -656,6 +656,14 @@ export default function CrmTicketDetail({
               <CardTitle className="text-sm font-semibold">Ticket ma’lumotlari</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 p-3.5">
+              {ticket.callerId && (
+                <Info
+                  icon={UserRound}
+                  label="User ID"
+                  value={ticket.callerId}
+                  copyValue={ticket.callerId}
+                />
+              )}
               <Info
                 icon={UserRound}
                 label="Mijoz"
@@ -873,7 +881,7 @@ function Info({ icon: Icon, label, value, copyValue }: any) {
       await navigator.clipboard.writeText(String(copyValue));
       toast.success(`${label} nusxalandi`);
     } catch {
-      toast.error("Nusxalab bo‘lmadi");
+      toast.error("Nusxalab bo'lmadi");
     }
   };
   return (
@@ -885,7 +893,18 @@ function Info({ icon: Icon, label, value, copyValue }: any) {
         <p className="text-[9px] font-bold uppercase text-muted-foreground">
           {label}
         </p>
-        <p className="truncate text-xs font-semibold">{value}</p>
+        {copyValue ? (
+          <button
+            type="button"
+            onClick={copy}
+            className="truncate text-xs font-semibold hover:text-blue-600 hover:underline cursor-pointer text-left block w-full"
+            title={`${label}ni nusxalash (Bosish orqali)`}
+          >
+            {value}
+          </button>
+        ) : (
+          <p className="truncate text-xs font-semibold">{value}</p>
+        )}
       </div>
       {copyValue ? (
         <button type="button" onClick={copy} title={`${label}ni nusxalash`} aria-label={`${label}ni nusxalash`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-60 transition hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:opacity-100">
