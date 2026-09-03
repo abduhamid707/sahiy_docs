@@ -69,8 +69,10 @@ export default function CreateTicketModal({
     customerId: "",
     customerName: "",
     phone: "",
-    orderId: "",
+    orderIds: [""],
     category: "DELIVERY_DELAY",
+    replacementOldValue: "",
+    replacementNewValue: "",
     description: "",
     assignedTo: "",
     priority: "NORMAL",
@@ -234,8 +236,10 @@ export default function CreateTicketModal({
         customerId: "",
         customerName: "",
         phone: "",
-        orderId: "",
+        orderIds: [""],
         category: "DELIVERY_DELAY",
+        replacementOldValue: "",
+        replacementNewValue: "",
         description: "",
         assignedTo: "",
         priority: "NORMAL",
@@ -255,7 +259,7 @@ export default function CreateTicketModal({
     form.customerId.trim() ||
       form.customerName.trim() ||
       form.phone.trim() ||
-      form.orderId.trim() ||
+      form.orderIds.join("").trim() ||
       form.description.trim() ||
       form.assignedTo ||
       form.category !== "DELIVERY_DELAY" ||
@@ -338,7 +342,7 @@ export default function CreateTicketModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
-    if (!form.customerId.trim() && !form.orderId.trim()) {
+    if (!form.customerId.trim() && form.orderIds.filter(Boolean).length === 0) {
       const message = "User ID yoki Order ID dan birini kiriting";
       setFormError(message);
       return toast.error(message);
@@ -361,8 +365,10 @@ export default function CreateTicketModal({
         customerId: form.customerId,
         customerName: form.customerName,
         phone: form.phone,
-        orderId: form.orderId,
+        orderId: form.orderIds.filter(Boolean).join(", "),
         category: form.category,
+        replacementOldValue: form.category === "REPLACEMENT" ? form.replacementOldValue : undefined,
+        replacementNewValue: form.category === "REPLACEMENT" ? form.replacementNewValue : undefined,
         description: form.description,
         assignedTo: form.assignedTo || undefined,
         priority: form.priority,
@@ -490,18 +496,50 @@ export default function CreateTicketModal({
 
           {/* Order ID & Category */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Buyurtma (Order ID)</Label>
-              <div className="relative">
-                <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  value={form.orderId}
-                  onChange={(e) => setForm({ ...form, orderId: e.target.value })}
-                  placeholder="DG0099993"
-                  className="pl-9 text-sm"
-                />
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Buyurtma (DG raqamlar)</Label>
+                <div className="space-y-2">
+                  {form.orderIds.map((id, index) => (
+                    <div key={index} className="flex items-center gap-2 relative">
+                      <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
+                      <Input
+                        value={id}
+                        onChange={(e) => {
+                          const newIds = [...form.orderIds];
+                          newIds[index] = e.target.value;
+                          setForm({ ...form, orderIds: newIds });
+                        }}
+                        placeholder="DG0099993"
+                        className="pl-9 text-sm"
+                      />
+                      {index === form.orderIds.length - 1 ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 shrink-0"
+                          onClick={() => setForm({ ...form, orderIds: [...form.orderIds, ""] })}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10"
+                          onClick={() => {
+                            const newIds = form.orderIds.filter((_, i) => i !== index);
+                            setForm({ ...form, orderIds: newIds });
+                          }}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Muammo turi *</Label>
@@ -517,9 +555,34 @@ export default function CreateTicketModal({
               <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               </div>
             </div>
-          </div>
+            </div>
 
-          {/* Problem description */}
+            {form.category === "REPLACEMENT" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 rounded-lg">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-blue-700 dark:text-blue-400">Eski mahsulot (DG/Link) *</Label>
+                  <Input
+                    required
+                    value={form.replacementOldValue}
+                    onChange={(e) => setForm({ ...form, replacementOldValue: e.target.value })}
+                    placeholder="Qaytayotgan mahsulot"
+                    className="text-sm bg-white dark:bg-background border-blue-200 dark:border-blue-800"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-blue-700 dark:text-blue-400">Yangi zakaz (DG/Link) *</Label>
+                  <Input
+                    required
+                    value={form.replacementNewValue}
+                    onChange={(e) => setForm({ ...form, replacementNewValue: e.target.value })}
+                    placeholder="O'rniga kiritilgan zakaz"
+                    className="text-sm bg-white dark:bg-background border-blue-200 dark:border-blue-800"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Problem description */}
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold">Muammo va izoh *</Label>
             <Textarea

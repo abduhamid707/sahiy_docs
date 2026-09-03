@@ -1,6 +1,6 @@
 export const CRM_STATUSES = ["NEW", "IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"] as const;
 export const CRM_PRIORITIES = ["LOW", "NORMAL", "HIGH", "CRITICAL"] as const;
-export const CRM_CATEGORIES = ["DELIVERY", "DELIVERY_DELAY", "TRACKING", "NOT_RECEIVED", "WRONG_OR_MISSING", "REFUND_PAYMENT", "CARGO_PAYMENT", "CHINA_WAREHOUSE", "OTHER"] as const;
+export const CRM_CATEGORIES = ["DELIVERY", "DELIVERY_DELAY", "TRACKING", "NOT_RECEIVED", "WRONG_OR_MISSING", "REFUND_PAYMENT", "CARGO_PAYMENT", "REPLACEMENT", "CHINA_WAREHOUSE", "OTHER"] as const;
 export const CRM_MESSAGE_TYPES = ["CUSTOMER_MESSAGE", "OPERATOR_RESPONSE", "INTERNAL_NOTE"] as const;
 
 export const CRM_STATUS_LABELS: Record<string, string> = {
@@ -27,6 +27,7 @@ export const CRM_CATEGORY_LABELS: Record<string, string> = {
   WRONG_OR_MISSING: "Noto'g'ri / yetishmaydi",
   REFUND_PAYMENT: "Refund / to'lov",
   CARGO_PAYMENT: "Kargo uchun to'lov",
+  REPLACEMENT: "O'ringa o'rin zakaz qilish",
   CHINA_WAREHOUSE: "Xitoy ombori",
   OTHER: "Boshqa",
 };

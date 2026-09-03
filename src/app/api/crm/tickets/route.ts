@@ -21,8 +21,10 @@ const createSchema = z.object({
   customerId: z.string().trim().max(100).optional().or(z.literal("")),
   customerName: z.string().trim().max(120).optional().or(z.literal("")),
   phone: z.string().trim().max(100).optional().or(z.literal("")),
-  orderId: z.string().trim().max(100).optional().or(z.literal("")),
+  orderId: z.string().trim().max(1000).optional().or(z.literal("")),
   category: z.enum(CRM_CATEGORIES),
+  replacementOldValue: z.string().trim().max(500).optional().or(z.literal("")),
+  replacementNewValue: z.string().trim().max(500).optional().or(z.literal("")),
   description: z.string().trim().min(3).max(10000),
   assignedTo: z.string().trim().optional(),
   priority: z.enum(CRM_PRIORITIES).default("NORMAL"),
@@ -105,6 +107,7 @@ export async function POST(req: Request) {
   const ticket = await Ticket.create({
     callerId: data.customerId || undefined, callerName: data.customerName, callerPhone: data.phone ? normalizeUzPhone(data.phone) : undefined, orderId: data.orderId || undefined,
     category: data.category, problem: data.description, priority: data.priority, status: data.status,
+    replacementOldValue: data.replacementOldValue || undefined, replacementNewValue: data.replacementNewValue || undefined,
     assignedTo, createdBy: user.id, deadlineAt, lastInteractionAt: new Date(),
     attachments, origin: "MANUAL", channel: "MANUAL",
   });

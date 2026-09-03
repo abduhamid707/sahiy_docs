@@ -84,8 +84,10 @@ export default function CrmTicketForm({
   const [form, setForm] = useState({
     customerName: "",
     phone: "+998",
-    orderId: "",
+    orderIds: [""],
     category: "DELIVERY_DELAY",
+    replacementOldValue: "",
+    replacementNewValue: "",
     description: "",
     assignedTo: "",
     priority: "NORMAL",
@@ -191,18 +193,26 @@ export default function CrmTicketForm({
       controller.abort();
     };
   }, [lookup, findCustomer]);
-  const chooseCustomer = (customer: any) => {
-    setSelectedCustomer(customer);
-    setResults([]);
-    setHasSearched(false);
-    setLookup("");
-    setForm((prev) => ({
-      ...prev,
-      customerName: customer.customerName,
-      phone: formatUzPhone(customer.phone),
-      orderId: customer.orderId || prev.orderId,
-    }));
-  };
+    const chooseCustomer = (customer: any) => {
+      setSelectedCustomer(customer);
+      setResults([]);
+      setHasSearched(false);
+      setLookup("");
+      setForm((prev) => {
+        let newOrderIds = prev.orderIds;
+        if (customer.orderId) {
+          const fetchedIds = customer.orderId.split(",").map((s: string) => s.trim());
+          newOrderIds = Array.from(new Set([...prev.orderIds.filter(Boolean), ...fetchedIds]));
+          if (newOrderIds.length === 0) newOrderIds = [""];
+        }
+        return {
+          ...prev,
+          customerName: customer.customerName,
+          phone: formatUzPhone(customer.phone),
+          orderIds: newOrderIds,
+        };
+      });
+    };
   const upload = async (file?: File) => {
     if (!file) return;
     setUploading(true);
@@ -228,16 +238,27 @@ export default function CrmTicketForm({
         ? new Date(`${form.deadlineAt}:00+05:00`)
         : null;
       if (deadlineAt && Number.isNaN(deadlineAt.getTime()))
-        throw new Error("SLA muddati noto‘g‘ri kiritilgan");
+        throw new Error("SLA muddati noto'g'ri kiritilgan");
+        
+      const payload = {
+        customerName: form.customerName,
+        phone: form.phone,
+        orderId: form.orderIds.filter(Boolean).join(", "),
+        category: form.category,
+        description: form.description,
+        assignedTo: form.assignedTo || undefined,
+        priority: form.priority,
+        status: form.status,
+        deadlineAt: deadlineAt?.toISOString(),
+        attachment: attachment || undefined,
+        replacementOldValue: form.category === "REPLACEMENT" ? form.replacementOldValue : undefined,
+        replacementNewValue: form.category === "REPLACEMENT" ? form.replacementNewValue : undefined,
+      };
+
       const res = await fetch("/api/crm/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          deadlineAt: deadlineAt?.toISOString(),
-          assignedTo: form.assignedTo || undefined,
-          attachment: attachment || undefined,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res
         .json()
@@ -395,15 +416,49 @@ export default function CrmTicketForm({
                   className="h-11 rounded-xl"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Order ID</Label>
-                <Input
-                  value={form.orderId}
-                  onChange={(e) => set("orderId", e.target.value)}
-                  placeholder="DG0099993"
-                  className="h-11 rounded-xl"
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label>Order ID (DG raqamlar)</Label>
+                  <div className="space-y-2">
+                    {form.orderIds.map((id, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <Input
+                          value={id}
+                          onChange={(e) => {
+                            const newIds = [...form.orderIds];
+                            newIds[index] = e.target.value;
+                            setForm({ ...form, orderIds: newIds });
+                          }}
+                          placeholder="DG0099993"
+                          className="h-11 rounded-xl"
+                        />
+                        {index === form.orderIds.length - 1 ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-11 w-11 rounded-xl shrink-0"
+                            onClick={() => setForm({ ...form, orderIds: [...form.orderIds, ""] })}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-11 w-11 rounded-xl shrink-0 text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              const newIds = form.orderIds.filter((_, i) => i !== index);
+                              setForm({ ...form, orderIds: newIds });
+                            }}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
             <div className="space-y-2">
               <Label>Muammo kategoriyasi *</Label>
               <Select

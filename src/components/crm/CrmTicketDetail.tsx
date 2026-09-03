@@ -673,6 +673,22 @@ export default function CrmTicketDetail({
                 value={ticket.orderId || "Ko'rsatilmagan"}
                 copyValue={ticket.orderId}
               />
+              {ticket.category === "REPLACEMENT" && (
+                <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/50 p-2.5 dark:border-blue-900/50 dark:bg-blue-950/20">
+                  <Info
+                    icon={ShoppingBag}
+                    label="Qaytayotgan mahsulot"
+                    value={ticket.replacementOldValue || "Kiritilmagan"}
+                    copyValue={ticket.replacementOldValue}
+                  />
+                  <Info
+                    icon={ShoppingBag}
+                    label="O'rniga kiritilgan zakaz"
+                    value={ticket.replacementNewValue || "Kiritilmagan"}
+                    copyValue={ticket.replacementNewValue}
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">
