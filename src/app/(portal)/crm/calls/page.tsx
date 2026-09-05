@@ -27,6 +27,7 @@ export default async function CrmCallsPage({ searchParams }: { searchParams: Pro
   
   if (period === "today") {
     startD.setHours(0, 0, 0, 0);
+    endD.setHours(23, 59, 59, 999);
   } else if (period === "yesterday") {
     startD.setDate(startD.getDate() - 1);
     startD.setHours(0, 0, 0, 0);
@@ -35,12 +36,15 @@ export default async function CrmCallsPage({ searchParams }: { searchParams: Pro
   } else if (period === "3days") {
     startD.setDate(startD.getDate() - 2);
     startD.setHours(0, 0, 0, 0);
+    endD.setHours(23, 59, 59, 999);
   } else if (period === "4days") {
     startD.setDate(startD.getDate() - 3);
     startD.setHours(0, 0, 0, 0);
+    endD.setHours(23, 59, 59, 999);
   } else if (period === "5days") {
     startD.setDate(startD.getDate() - 4);
     startD.setHours(0, 0, 0, 0);
+    endD.setHours(23, 59, 59, 999);
   } else if (period === "custom") {
     if (params.from) startD = new Date(params.from);
     if (params.to) {
@@ -50,6 +54,7 @@ export default async function CrmCallsPage({ searchParams }: { searchParams: Pro
   } else {
     // Default fallback
     startD.setHours(0, 0, 0, 0);
+    endD.setHours(23, 59, 59, 999);
   }
 
   query.startedAt = { $gte: startD, $lte: endD };
