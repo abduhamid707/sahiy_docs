@@ -9,7 +9,8 @@ import {
   X,
   MessageSquare,
   Headset,
-  ChartNoAxesCombined
+  ChartNoAxesCombined,
+  PhoneCall
 } from "lucide-react";
 
 const navItems = [
@@ -21,6 +22,7 @@ const navItems = [
 
 const supportItems = [
   { name: "CRM Inbox", href: "/crm", icon: Headset, managerOnly: false },
+  { name: "Qo'ng'iroqlar", href: "/crm/calls", icon: PhoneCall, managerOnly: false },
   { name: "CRM Analytics", href: "/crm/analytics", icon: ChartNoAxesCombined, managerOnly: true },
 ];
 

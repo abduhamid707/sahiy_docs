@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Clock3, Flame, Inbox, MessagesSquare, Tag, Activity, TimerReset } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Clock3, Flame, Inbox, MessagesSquare, Tag, Activity, TimerReset, PhoneCall, Headset, PhoneOff, PhoneForwarded } from "lucide-react";
 import { auth } from "@/auth";
 import dbConnect from "@/lib/mongodb";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { canSeeAllTickets } from "@/lib/support/permissions";
 import { getCrmAnalytics } from "@/lib/support/analytics";
 import { CRM_CATEGORY_LABELS, CRM_STATUS_LABELS, formatDuration, ticketPublicId } from "@/lib/crm";
+import { formatCallDuration } from "@/lib/utils";
 
 function humanMs(ms: number) {
   if (!ms) return "—";
@@ -206,7 +207,77 @@ export default async function CrmAnalyticsPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="rounded-2xl">
           <CardHeader>
-            <CardTitle>Operator samaradorligi</CardTitle>
+            <div className="flex items-center gap-2">
+              <Headset className="h-5 w-5 text-indigo-600" />
+              <CardTitle>Call Center (Bugun)</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 mb-6">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5"><PhoneCall className="h-3 w-3" /> Jami Qo'ng'iroq</p>
+                <p className="text-2xl font-bold">{data.calls.todayTotal}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-emerald-600 flex items-center gap-1.5"><Headset className="h-3 w-3" /> Javob berildi</p>
+                <p className="text-2xl font-bold">{data.calls.todayAnswered}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-rose-500 flex items-center gap-1.5"><PhoneOff className="h-3 w-3" /> O'tkazib yuborildi</p>
+                <p className="text-2xl font-bold">{data.calls.todayMissed}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Activity className="h-3 w-3" /> Answer Rate</p>
+                <p className="text-xl font-bold">
+                  {data.calls.todayTotal > 0 ? Math.round((data.calls.todayAnswered / data.calls.todayTotal) * 100) : 0}%
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5"><Clock3 className="h-3 w-3" /> O'rt. Gaplashish</p>
+                <p className="text-xl font-bold">{formatCallDuration(data.calls.avgTalkSec)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5"><TimerReset className="h-3 w-3" /> O'rt. Kutish</p>
+                <p className="text-xl font-bold">{formatCallDuration(data.calls.avgWaitSec)}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold">Operatorlar Qo'ng'iroqlari</h4>
+              <div className="rounded-xl border bg-card text-card-foreground shadow-sm overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="py-2 px-3 text-left font-medium">Operator (PBX)</th>
+                      <th className="py-2 px-3 text-right font-medium">Qabul</th>
+                      <th className="py-2 px-3 text-right font-medium">Missed</th>
+                      <th className="py-2 px-3 text-right font-medium">O'rt. vaqt</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {data.calls.operators.map((o: any) => (
+                      <tr key={o._id} className="hover:bg-muted/30">
+                        <td className="py-2 px-3 font-medium">{o._id}</td>
+                        <td className="py-2 px-3 text-right text-emerald-600 font-semibold">{o.answered}</td>
+                        <td className="py-2 px-3 text-right text-rose-500 font-semibold">{o.missed}</td>
+                        <td className="py-2 px-3 text-right text-muted-foreground">{formatCallDuration(o.avgTalk)}</td>
+                      </tr>
+                    ))}
+                    {!data.calls.operators.length && (
+                      <tr>
+                        <td colSpan={4} className="py-4 text-center text-muted-foreground">Bugun operatorlar qo'ng'iroq qabul qilmadi</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl">
+          <CardHeader>
+            <CardTitle>Operator samaradorligi (Ticketlar)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {data.operators.length ? (

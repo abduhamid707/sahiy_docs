@@ -30,6 +30,7 @@ const createSchema = z.object({
   priority: z.enum(CRM_PRIORITIES).default("NORMAL"),
   status: z.enum(CRM_STATUSES).default("NEW"),
   deadlineAt: z.string().datetime().optional().or(z.literal("")),
+  linkedCallId: z.string().optional(),
   attachment: attachmentSchema.optional(),
   attachments: z.array(attachmentSchema).max(10, "Ko'pi bilan 10 ta fayl biriktirish mumkin").optional(),
 }).superRefine((data, ctx) => {
@@ -117,6 +118,20 @@ export async function POST(req: Request) {
     { ticketId: ticket._id, type: "SYSTEM_EVENT", body: "Ticket yaratildi", author: user.id, authorName: user.name },
     { ticketId: ticket._id, type: "CUSTOMER_MESSAGE", body: data.description, authorName: data.customerName, attachments },
   ]);
+
+  // Link call if provided
+  if (data.linkedCallId) {
+    const Call = (await import("@/models/Call")).default;
+    await Call.findByIdAndUpdate(data.linkedCallId, { ticketId: ticket._id });
+    await TicketMessage.create({
+      ticketId: ticket._id,
+      type: "SYSTEM_EVENT",
+      body: "Telefon qo'ng'irog'i orqali yaratildi",
+      author: user.id,
+      authorName: user.name
+    });
+  }
+
   if (assignedTo && assignedTo !== user.id) {
     after(async () => {
       await Promise.allSettled([

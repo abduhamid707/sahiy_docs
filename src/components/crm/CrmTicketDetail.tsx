@@ -26,6 +26,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { formatPhone, formatCallDuration, cn } from "@/lib/utils";
+import CrmAudioPlayer from "./CrmAudioPlayer";
 import {
   Dialog,
   DialogContent,
@@ -51,7 +53,7 @@ import {
   isOverdue,
   ticketPublicId,
 } from "@/lib/crm";
-import { cn } from "@/lib/utils";
+
 
 const typeMeta: Record<string, { label: string; icon: any; box: string }> = {
   CUSTOMER_MESSAGE: {
@@ -81,6 +83,8 @@ export default function CrmTicketDetail({
   messages,
   previousTickets,
   agents,
+  calls,
+  recentCalls,
   currentUser,
   canManage,
   nowIso,
@@ -109,6 +113,12 @@ export default function CrmTicketDetail({
   const assignedId = ticket.assignedTo?._id || ticket.assignedTo;
   const isAssignedOperator = currentUser.role === "SUPPORT" && assignedId === currentUser.id;
   const canWriteCustomerReply = isAssignedOperator || canManage;
+
+  const timeline = [
+    ...(messages || []),
+    ...(calls || []).map((c: any) => ({ ...c, _isCall: true }))
+  ].sort((a, b) => new Date(a.createdAt || a.startedAt).getTime() - new Date(b.createdAt || b.startedAt).getTime());
+
   const patch = async (data: any, success: string) => {
     setLoading(true);
     try {
@@ -234,11 +244,11 @@ export default function CrmTicketDetail({
       setConsultationOpen(false);
       setConsultationOperator("");
       setConsultationQuestion("");
-      toast.success("Maslahat so‘rovi yuborildi");
+      toast.success("Maslahat soР Р†Р вЂљР’Вrovi yuborildi");
       window.dispatchEvent(new Event("crm-notifications-changed"));
       router.refresh();
     } catch (error: any) {
-      toast.error(error.message || "Maslahat so‘rovi yuborilmadi");
+      toast.error(error.message || "Maslahat soР Р†Р вЂљР’Вrovi yuborilmadi");
     } finally {
       setLoading(false);
     }
@@ -300,7 +310,7 @@ export default function CrmTicketDetail({
         <div className="flex flex-wrap items-center justify-end gap-2">
         {!closed && isAssignedOperator && (
           <Button onClick={() => setConsultationOpen(true)} disabled={loading} size="sm" variant="outline" className="h-9 rounded-lg text-xs">
-            <MessageCircle /> Maslahat so‘rash
+            <MessageCircle /> Maslahat soР Р†Р вЂљР’Вrash
           </Button>
         )}
         {closed ? (
@@ -310,11 +320,11 @@ export default function CrmTicketDetail({
         ) : approvalStatus === "PENDING" ? (
           canApprove ? (
             <Button onClick={() => setApprovalOpen(true)} disabled={loading} size="sm" className="h-9 rounded-lg bg-blue-600 text-xs text-white hover:bg-blue-700">
-              <ShieldCheck /> Ko‘rib chiqish
+              <ShieldCheck /> KoР Р†Р вЂљР’Вrib chiqish
             </Button>
           ) : (
             <Button disabled size="sm" className="h-9 rounded-lg text-xs">
-              <Clock3 /> Admin tasdig‘i kutilmoqda
+              <Clock3 /> Admin tasdigР Р†Р вЂљР’Вi kutilmoqda
             </Button>
           )
         ) : isSuperAdmin ? (
@@ -341,17 +351,17 @@ export default function CrmTicketDetail({
           <DialogHeader>
             <DialogTitle>
               {canApprove && approvalStatus === "PENDING"
-                ? "Yakuniy qarorni ko‘rib chiqish"
+                ? "Yakuniy qarorni koР Р†Р вЂљР’Вrib chiqish"
                 : isSuperAdmin
                   ? "Ticketni hal qilish"
                   : "Ticketni adminga yuborish"}
             </DialogTitle>
             <DialogDescription>
               {canApprove && approvalStatus === "PENDING"
-                ? "Operator mijozga qo‘lda yuborgan SMS matnini tekshiring. Oxirgi qarorni admin beradi."
+                ? "Operator mijozga qoР Р†Р вЂљР’Вlda yuborgan SMS matnini tekshiring. Oxirgi qarorni admin beradi."
                 : isSuperAdmin
                   ? "Mijozga yuborilgan SMS matnini yozing. Tasdiqlangach ticket darhol hal qilinadi."
-                  : "Mijozga qo‘lda yuborgan SMS xabaringizni yozing. U tarixga saqlanib, admin tasdig‘iga yuboriladi."}
+                  : "Mijozga qoР Р†Р вЂљР’Вlda yuborgan SMS xabaringizni yozing. U tarixga saqlanib, admin tasdigР Р†Р вЂљР’Вiga yuboriladi."}
             </DialogDescription>
           </DialogHeader>
 
@@ -374,9 +384,9 @@ export default function CrmTicketDetail({
             <div className="space-y-4 pt-2">
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold">Mijozga yuborilgan SMS matni *</label>
-                <Textarea autoFocus value={smsText} onChange={(event) => setSmsText(event.target.value)} placeholder="Masalan: Hurmatli mijoz, murojaatingiz ko‘rib chiqildi va muammo hal qilindi..." className="min-h-32" />
+                <Textarea autoFocus value={smsText} onChange={(event) => setSmsText(event.target.value)} placeholder="Masalan: Hurmatli mijoz, murojaatingiz koР Р†Р вЂљР’Вrib chiqildi va muammo hal qilindi..." className="min-h-32" />
                 <p className="text-xs text-muted-foreground">
-                  Hozircha SMS tizim orqali jo‘natilmaydi. Bu yerga mijozga qo‘lda yuborilgan xabar qayd qilinadi.
+                  Hozircha SMS tizim orqali joР Р†Р вЂљР’Вnatilmaydi. Bu yerga mijozga qoР Р†Р вЂљР’Вlda yuborilgan xabar qayd qilinadi.
                 </p>
               </div>
               <DialogFooter>
@@ -397,7 +407,7 @@ export default function CrmTicketDetail({
       <Dialog open={consultationOpen} onOpenChange={(open) => !loading && setConsultationOpen(open)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Boshqa operatordan maslahat so‘rash</DialogTitle>
+            <DialogTitle>Boshqa operatordan maslahat soР Р†Р вЂљР’Вrash</DialogTitle>
             <DialogDescription>Ticket sizda qoladi. Tanlangan operator savolga ichki javob beradi.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -439,13 +449,52 @@ export default function CrmTicketDetail({
                   {ticket.problem}
                 </p>
               </div>
-              {!messages.length && (
-                <div className="py-12 text-center text-sm text-muted-foreground">
-                  Hozircha tarix mavjud emas.
-                </div>
-              )}
-              {messages.map((message: any) => {
-                const meta = typeMeta[message.type] || typeMeta.SYSTEM_EVENT;
+                {timeline.length === 0 && (
+                  <div className="py-8 text-center text-sm text-slate-500">
+                    Hozircha tarix mavjud emas.
+                  </div>
+                )}
+                {timeline.map((item: any) => {
+                  if (item._isCall) {
+                    return (
+                      <div key={item._id} className="flex justify-center my-4">
+                        <div className="flex w-full max-w-md items-start gap-3 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 shadow-sm dark:border-indigo-900/50 dark:bg-indigo-900/20">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/50">
+                            <Phone className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                          </div>
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-300">
+                                РЎР‚РЎСџРІР‚СљРЎвЂє Kiruvchi qo'ng'iroq
+                              </span>
+                              <span className="text-[11px] font-medium text-indigo-600/70 dark:text-indigo-400/70">
+                                {(() => {
+                                  const d = new Date(item.startedAt);
+                                  const pad = (n: number) => n.toString().padStart(2, '0');
+                                  const months = ["Yan", "Fev", "Mar", "Apr", "May", "Iyun", "Iyul", "Avg", "Sen", "Okt", "Noy", "Dek"];
+                                  return `${pad(d.getDate())} ${months[d.getMonth()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                                })()}
+                              </span>
+                            </div>
+                            <div className="text-xs text-indigo-800 dark:text-indigo-200 space-y-1">
+                              <div className="font-medium">{formatPhone(item.phone) || item.phone}</div>
+                              {item.operator && <div className="opacity-80">Operator: {item.operator}</div>}
+                              <div className="opacity-80">Gaplashildi: {formatCallDuration(item.duration)} (Jami: {formatCallDuration(item.totalDuration)})</div>
+                            </div>
+                            {item.audioUrl && (
+                              <CrmAudioPlayer 
+                                src={`/api/telephony/audio?url=${encodeURIComponent(item.audioUrl)}`} 
+                                className="mt-1 bg-white/60 dark:bg-black/20"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const message = item;
+                  const meta = typeMeta[message.type] || typeMeta.SYSTEM_EVENT;
                 const Icon = meta.icon;
                 const isOperator = message.type === "OPERATOR_RESPONSE";
                 const isCustomer = message.type === "CUSTOMER_MESSAGE";
@@ -492,7 +541,7 @@ export default function CrmTicketDetail({
                                   : "text-muted-foreground",
                               )}
                             >
-                              · {message.author?.name || message.authorName}
+                              Р вЂ™Р’В· {message.author?.name || message.authorName}
                             </span>
                           ) : null}
                         </div>
@@ -517,7 +566,7 @@ export default function CrmTicketDetail({
                       </p>
                       {isConsultation && (
                         <div className="mt-2 space-y-2 border-t border-amber-300/70 pt-2 text-xs">
-                          <p className="font-semibold">Maslahat: {message.metadata.requestedByName} → {message.metadata.requestedToName}</p>
+                          <p className="font-semibold">Maslahat: {message.metadata.requestedByName} Р Р†РІР‚В РІР‚в„ў {message.metadata.requestedToName}</p>
                           {message.metadata.status === "ANSWERED" ? (
                             <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-2 dark:border-emerald-900 dark:bg-emerald-950/30">
                               <p className="mb-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{message.metadata.respondedByName} javobi</p>
@@ -598,7 +647,7 @@ export default function CrmTicketDetail({
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  Qo‘ng‘iroqdagi mijoz xabarini qayd etish
+                  QoР Р†Р вЂљР’ВngР Р†Р вЂљР’Вiroqdagi mijoz xabarini qayd etish
                 </button>}
               </div>
               <Textarea
@@ -608,7 +657,7 @@ export default function CrmTicketDetail({
                   type === "INTERNAL_NOTE"
                     ? "Faqat jamoa ko'radigan izoh..."
                     : type === "CUSTOMER_MESSAGE"
-                      ? "Mijoz qo‘ng‘iroqda aytgan xabarni kiriting..."
+                      ? "Mijoz qoР Р†Р вЂљР’ВngР Р†Р вЂљР’Вiroqda aytgan xabarni kiriting..."
                       : "Mijozga javob yoki yangilanish yozing..."
                 }
                 className="min-h-16 resize-none rounded-lg text-xs leading-5"
@@ -644,7 +693,7 @@ export default function CrmTicketDetail({
                   className="h-8 rounded-lg bg-brand-blue px-3 text-xs text-white hover:bg-brand-blue-hover"
                 >
                   {loading ? <Loader2 className="animate-spin" /> : <Send />}
-                  Qo‘shish
+                  QoР Р†Р вЂљР’Вshish
                 </Button>
               </div>
             </CardContent>
@@ -653,7 +702,7 @@ export default function CrmTicketDetail({
         <aside className="space-y-3 xl:min-h-0 xl:overflow-y-auto xl:pr-1">
           <Card className="rounded-xl">
             <CardHeader className="border-b px-4 py-2.5">
-              <CardTitle className="text-sm font-semibold">Ticket ma’lumotlari</CardTitle>
+              <CardTitle className="text-sm font-semibold">Ticket maР Р†Р вЂљРІвЂћСћlumotlari</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 p-3.5">
               {ticket.callerId && (
@@ -664,11 +713,25 @@ export default function CrmTicketDetail({
                   copyValue={ticket.callerId}
                 />
               )}
-              <Info
-                icon={UserRound}
-                label="Mijoz"
-                value={ticket.callerName || "Noma'lum"}
-              />
+                <Info
+                  icon={UserRound}
+                  label="Mijoz"
+                  value={ticket.callerName || "Noma'lum"}
+                >
+                  {(() => {
+                    if (!recentCalls) return null;
+                    const oneDayAgo = new Date(new Date().getTime() - 24 * 60 * 60 * 1000);
+                    const recentCount = recentCalls.filter((c: any) => new Date(c.startedAt) > oneDayAgo).length;
+                    if (recentCount >= 3) {
+                      return (
+                        <span className="inline-flex items-center rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">
+                          Tez-tez murojaat qilmoqda ({recentCount} ta)
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
+                </Info>
               <Info
                 icon={Phone}
                 label="Telefon"
@@ -756,7 +819,7 @@ export default function CrmTicketDetail({
               {canManage || isAssignedOperator ? (
                 <div>
                   <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">
-                    Mas’ul operator
+                    MasР Р†Р вЂљРІвЂћСћul operator
                   </p>
                   <Select
                     value={ticket.assignedTo?._id || "UNASSIGNED"}
@@ -794,7 +857,7 @@ export default function CrmTicketDetail({
                       )
                     }
                   >
-                    O‘zimga olish
+                    OР Р†Р вЂљР’Вzimga olish
                   </Button>
                 )
               )}
@@ -838,6 +901,30 @@ export default function CrmTicketDetail({
               </div>
             </CardContent>
           </Card>
+          
+          <Card className="rounded-xl">
+            <CardHeader className="border-b px-4 py-2.5">
+              <CardTitle className="text-sm font-semibold">Aloqalar tarixi</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Qo'ng'iroqlar</span>
+                <span className="font-semibold">{calls?.length || 0} ta</span>
+              </div>
+              {calls && calls.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Oxirgisi</span>
+                  <span className="font-semibold">{(() => {
+                    const lastCall = calls[calls.length - 1];
+                    const diffMins = Math.floor((new Date().getTime() - new Date(lastCall.startedAt).getTime()) / 60000);
+                    if (diffMins < 60) return `${diffMins} daq. oldin`;
+                    return `${Math.floor(diffMins / 60)} soat oldin`;
+                  })()}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="rounded-xl">
             <CardHeader className="border-b px-4 py-2.5">
               <CardTitle className="text-sm font-semibold">Avvalgi ticketlar</CardTitle>
@@ -845,7 +932,7 @@ export default function CrmTicketDetail({
             <CardContent className="p-3">
               {!previousTickets.length ? (
                 <p className="p-3 text-sm text-muted-foreground">
-                  Bu raqam bo‘yicha boshqa ticket yo‘q.
+                  Bu raqam boР Р†Р вЂљР’Вyicha boshqa ticket yoР Р†Р вЂљР’Вq.
                 </p>
               ) : (
                 previousTickets.map((t: any) => (
@@ -874,7 +961,7 @@ export default function CrmTicketDetail({
   );
 }
 
-function Info({ icon: Icon, label, value, copyValue }: any) {
+function Info({ icon: Icon, label, value, copyValue, children }: any) {
   const copy = async () => {
     if (!copyValue) return;
     try {
@@ -885,8 +972,8 @@ function Info({ icon: Icon, label, value, copyValue }: any) {
     }
   };
   return (
-    <div className="group flex items-center gap-2.5">
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
+    <div className="group flex items-start gap-2.5">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted mt-0.5">
         <Icon className="h-3.5 w-3.5" />
       </div>
       <div className="min-w-0 flex-1">
@@ -905,9 +992,10 @@ function Info({ icon: Icon, label, value, copyValue }: any) {
         ) : (
           <p className="truncate text-xs font-semibold">{value}</p>
         )}
+        {children && <div className="mt-1">{children}</div>}
       </div>
       {copyValue ? (
-        <button type="button" onClick={copy} title={`${label}ni nusxalash`} aria-label={`${label}ni nusxalash`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-60 transition hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:opacity-100">
+        <button type="button" onClick={copy} title={`${label}ni nusxalash`} aria-label={`${label}ni nusxalash`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-60 transition hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:opacity-100 mt-0.5">
           <Copy className="h-3.5 w-3.5" />
         </button>
       ) : null}

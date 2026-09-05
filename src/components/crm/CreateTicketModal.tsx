@@ -35,6 +35,8 @@ interface CreateTicketModalProps {
   agents: any[];
   canAssign: boolean;
   onSuccess: (newTicket: any) => void;
+  linkedCallId?: string;
+  prefillPhone?: string;
 }
 
 interface SlaPreset {
@@ -52,6 +54,8 @@ export default function CreateTicketModal({
   agents,
   canAssign,
   onSuccess,
+  linkedCallId,
+  prefillPhone,
 }: CreateTicketModalProps) {
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
@@ -87,6 +91,12 @@ export default function CreateTicketModal({
   const [uploading, setUploading] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen && prefillPhone) {
+      setForm((prev) => ({ ...prev, phone: prefillPhone }));
+    }
+  }, [isOpen, prefillPhone]);
 
   const formatDisplayDateTime = (isoOrLocalStr: string) => {
     if (!isoOrLocalStr) return "";
@@ -361,11 +371,12 @@ export default function CreateTicketModal({
     setLoading(true);
 
     try {
+      const orderIdStr = form.orderIds.filter(Boolean).join(", ");
       const payload = {
-        customerId: form.customerId,
-        customerName: form.customerName,
-        phone: form.phone,
-        orderId: form.orderIds.filter(Boolean).join(", "),
+        customerId: form.customerId || undefined,
+        customerName: form.customerName || undefined,
+        phone: form.phone || undefined,
+        orderId: orderIdStr || undefined,
         category: form.category,
         replacementOldValue: form.category === "REPLACEMENT" ? form.replacementOldValue : undefined,
         replacementNewValue: form.category === "REPLACEMENT" ? form.replacementNewValue : undefined,
@@ -375,6 +386,7 @@ export default function CreateTicketModal({
         status: form.status,
         deadlineAt: deadline.toISOString(),
         attachments,
+        linkedCallId: linkedCallId || undefined,
       };
 
       const res = await fetch("/api/crm/tickets", {
