@@ -244,11 +244,11 @@ export default function CrmTicketDetail({
       setConsultationOpen(false);
       setConsultationOperator("");
       setConsultationQuestion("");
-      toast.success("Maslahat soР Р†Р вЂљР’Вrovi yuborildi");
+      toast.success("Maslahat so‘rovi yuborildi");
       window.dispatchEvent(new Event("crm-notifications-changed"));
       router.refresh();
     } catch (error: any) {
-      toast.error(error.message || "Maslahat soР Р†Р вЂљР’Вrovi yuborilmadi");
+      toast.error(error.message || "Maslahat so‘rovi yuborilmadi");
     } finally {
       setLoading(false);
     }
@@ -310,7 +310,7 @@ export default function CrmTicketDetail({
         <div className="flex flex-wrap items-center justify-end gap-2">
         {!closed && isAssignedOperator && (
           <Button onClick={() => setConsultationOpen(true)} disabled={loading} size="sm" variant="outline" className="h-9 rounded-lg text-xs">
-            <MessageCircle /> Maslahat soР Р†Р вЂљР’Вrash
+            <MessageCircle /> Maslahat so‘rash
           </Button>
         )}
         {closed ? (
@@ -320,11 +320,11 @@ export default function CrmTicketDetail({
         ) : approvalStatus === "PENDING" ? (
           canApprove ? (
             <Button onClick={() => setApprovalOpen(true)} disabled={loading} size="sm" className="h-9 rounded-lg bg-blue-600 text-xs text-white hover:bg-blue-700">
-              <ShieldCheck /> KoР Р†Р вЂљР’Вrib chiqish
+              <ShieldCheck /> Ko‘rib chiqish
             </Button>
           ) : (
             <Button disabled size="sm" className="h-9 rounded-lg text-xs">
-              <Clock3 /> Admin tasdigР Р†Р вЂљР’Вi kutilmoqda
+              <Clock3 /> Admin tasdig‘i kutilmoqda
             </Button>
           )
         ) : isSuperAdmin ? (
@@ -351,17 +351,17 @@ export default function CrmTicketDetail({
           <DialogHeader>
             <DialogTitle>
               {canApprove && approvalStatus === "PENDING"
-                ? "Yakuniy qarorni koР Р†Р вЂљР’Вrib chiqish"
+                ? "Yakuniy qarorni ko‘rib chiqish"
                 : isSuperAdmin
                   ? "Ticketni hal qilish"
                   : "Ticketni adminga yuborish"}
             </DialogTitle>
             <DialogDescription>
               {canApprove && approvalStatus === "PENDING"
-                ? "Operator mijozga qoР Р†Р вЂљР’Вlda yuborgan SMS matnini tekshiring. Oxirgi qarorni admin beradi."
+                ? "Operator mijozga qo‘lda yuborgan SMS matnini tekshiring. Oxirgi qarorni admin beradi."
                 : isSuperAdmin
                   ? "Mijozga yuborilgan SMS matnini yozing. Tasdiqlangach ticket darhol hal qilinadi."
-                  : "Mijozga qoР Р†Р вЂљР’Вlda yuborgan SMS xabaringizni yozing. U tarixga saqlanib, admin tasdigР Р†Р вЂљР’Вiga yuboriladi."}
+                  : "Mijozga qo‘lda yuborgan SMS xabaringizni yozing. U tarixga saqlanib, admin tasdig‘iga yuboriladi."}
             </DialogDescription>
           </DialogHeader>
 
@@ -384,9 +384,9 @@ export default function CrmTicketDetail({
             <div className="space-y-4 pt-2">
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold">Mijozga yuborilgan SMS matni *</label>
-                <Textarea autoFocus value={smsText} onChange={(event) => setSmsText(event.target.value)} placeholder="Masalan: Hurmatli mijoz, murojaatingiz koР Р†Р вЂљР’Вrib chiqildi va muammo hal qilindi..." className="min-h-32" />
+                <Textarea autoFocus value={smsText} onChange={(event) => setSmsText(event.target.value)} placeholder="Masalan: Hurmatli mijoz, murojaatingiz ko‘rib chiqildi va muammo hal qilindi..." className="min-h-32" />
                 <p className="text-xs text-muted-foreground">
-                  Hozircha SMS tizim orqali joР Р†Р вЂљР’Вnatilmaydi. Bu yerga mijozga qoР Р†Р вЂљР’Вlda yuborilgan xabar qayd qilinadi.
+                  Hozircha SMS tizim orqali jo‘natilmaydi. Bu yerga mijozga qo‘lda yuborilgan xabar qayd qilinadi.
                 </p>
               </div>
               <DialogFooter>
@@ -407,7 +407,7 @@ export default function CrmTicketDetail({
       <Dialog open={consultationOpen} onOpenChange={(open) => !loading && setConsultationOpen(open)}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Boshqa operatordan maslahat soР Р†Р вЂљР’Вrash</DialogTitle>
+            <DialogTitle>Boshqa operatordan maslahat so‘rash</DialogTitle>
             <DialogDescription>Ticket sizda qoladi. Tanlangan operator savolga ichki javob beradi.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -465,7 +465,7 @@ export default function CrmTicketDetail({
                           <div className="flex-1 space-y-3">
                             <div className="flex items-center justify-between">
                               <span className="text-sm font-semibold text-indigo-900 dark:text-indigo-300">
-                                РЎР‚РЎСџРІР‚СљРЎвЂє Kiruvchi qo'ng'iroq
+                                📞 Kiruvchi qo‘ng‘iroq
                               </span>
                               <span className="text-[11px] font-medium text-indigo-600/70 dark:text-indigo-400/70">
                                 {(() => {
@@ -541,7 +541,7 @@ export default function CrmTicketDetail({
                                   : "text-muted-foreground",
                               )}
                             >
-                              Р вЂ™Р’В· {message.author?.name || message.authorName}
+                              · {message.author?.name || message.authorName}
                             </span>
                           ) : null}
                         </div>
@@ -566,7 +566,7 @@ export default function CrmTicketDetail({
                       </p>
                       {isConsultation && (
                         <div className="mt-2 space-y-2 border-t border-amber-300/70 pt-2 text-xs">
-                          <p className="font-semibold">Maslahat: {message.metadata.requestedByName} Р Р†РІР‚В РІР‚в„ў {message.metadata.requestedToName}</p>
+                          <p className="font-semibold">Maslahat: {message.metadata.requestedByName} → {message.metadata.requestedToName}</p>
                           {message.metadata.status === "ANSWERED" ? (
                             <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-2 dark:border-emerald-900 dark:bg-emerald-950/30">
                               <p className="mb-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">{message.metadata.respondedByName} javobi</p>
@@ -647,7 +647,7 @@ export default function CrmTicketDetail({
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  QoР Р†Р вЂљР’ВngР Р†Р вЂљР’Вiroqdagi mijoz xabarini qayd etish
+                  Qo‘ng‘iroqdagi mijoz xabarini qayd etish
                 </button>}
               </div>
               <Textarea
@@ -657,7 +657,7 @@ export default function CrmTicketDetail({
                   type === "INTERNAL_NOTE"
                     ? "Faqat jamoa ko'radigan izoh..."
                     : type === "CUSTOMER_MESSAGE"
-                      ? "Mijoz qoР Р†Р вЂљР’ВngР Р†Р вЂљР’Вiroqda aytgan xabarni kiriting..."
+                      ? "Mijoz qo‘ng‘iroqda aytgan xabarni kiriting..."
                       : "Mijozga javob yoki yangilanish yozing..."
                 }
                 className="min-h-16 resize-none rounded-lg text-xs leading-5"
@@ -693,7 +693,7 @@ export default function CrmTicketDetail({
                   className="h-8 rounded-lg bg-brand-blue px-3 text-xs text-white hover:bg-brand-blue-hover"
                 >
                   {loading ? <Loader2 className="animate-spin" /> : <Send />}
-                  QoР Р†Р вЂљР’Вshish
+                  Qo‘shish
                 </Button>
               </div>
             </CardContent>
@@ -702,7 +702,7 @@ export default function CrmTicketDetail({
         <aside className="space-y-3 xl:min-h-0 xl:overflow-y-auto xl:pr-1">
           <Card className="rounded-xl">
             <CardHeader className="border-b px-4 py-2.5">
-              <CardTitle className="text-sm font-semibold">Ticket maР Р†Р вЂљРІвЂћСћlumotlari</CardTitle>
+              <CardTitle className="text-sm font-semibold">Ticket ma’lumotlari</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 p-3.5">
               {ticket.callerId && (
@@ -819,7 +819,7 @@ export default function CrmTicketDetail({
               {canManage || isAssignedOperator ? (
                 <div>
                   <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">
-                    MasР Р†Р вЂљРІвЂћСћul operator
+                    Mas’ul operator
                   </p>
                   <Select
                     value={ticket.assignedTo?._id || "UNASSIGNED"}
@@ -857,7 +857,7 @@ export default function CrmTicketDetail({
                       )
                     }
                   >
-                    OР Р†Р вЂљР’Вzimga olish
+                    O‘zimga olish
                   </Button>
                 )
               )}
@@ -908,7 +908,7 @@ export default function CrmTicketDetail({
             </CardHeader>
             <CardContent className="p-4 space-y-2 text-sm">
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Qo'ng'iroqlar</span>
+                <span className="text-muted-foreground">Qo‘ng‘iroqlar</span>
                 <span className="font-semibold">{calls?.length || 0} ta</span>
               </div>
               {calls && calls.length > 0 && (
@@ -932,7 +932,7 @@ export default function CrmTicketDetail({
             <CardContent className="p-3">
               {!previousTickets.length ? (
                 <p className="p-3 text-sm text-muted-foreground">
-                  Bu raqam boР Р†Р вЂљР’Вyicha boshqa ticket yoР Р†Р вЂљР’Вq.
+                  Bu raqam bo‘yicha boshqa ticket yo‘q.
                 </p>
               ) : (
                 previousTickets.map((t: any) => (
