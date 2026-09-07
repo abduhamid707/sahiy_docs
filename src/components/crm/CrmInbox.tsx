@@ -8,15 +8,27 @@ import {
   Clock3,
   Flame,
   Inbox,
+  Loader2,
   MessageSquareText,
   Plus,
+  RotateCcw,
   Search,
+  ShieldCheck,
   UserRoundCheck,
   UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -99,6 +111,7 @@ export default function CrmInbox({
   agents,
   currentUserId,
   canAssign,
+  canApprove,
   nowIso,
 }: {
   initialTickets: any[];
@@ -107,6 +120,7 @@ export default function CrmInbox({
   initialNotifications: any[];
   currentUserId: string;
   canAssign: boolean;
+  canApprove: boolean;
   nowIso: string;
 }) {
   const [tickets, setTickets] = useState(initialTickets);
@@ -117,6 +131,9 @@ export default function CrmInbox({
   const [assignee, setAssignee] = useState("ALL");
   const [date, setDate] = useState("");
   const [updating, setUpdating] = useState("");
+  const [approvalTicket, setApprovalTicket] = useState<any | null>(null);
+  const [reviewComment, setReviewComment] = useState("");
+  const [approvalLoading, setApprovalLoading] = useState(false);
   const [executiveReportOpen, setExecutiveReportOpen] = useState(false);
   const stats = useMemo(() => computeTicketStats(tickets, nowIso), [tickets, nowIso]);
   const summary = useMemo(
@@ -217,6 +234,33 @@ export default function CrmInbox({
     } finally { setUpdating(""); }
   };
 
+  const reviewResolution = async (action: "APPROVE" | "RETURN") => {
+    if (!approvalTicket) return;
+    if (action === "RETURN" && reviewComment.trim().length < 3) {
+      toast.error("Qaytarish sababini yozing");
+      return;
+    }
+    setApprovalLoading(true);
+    try {
+      const response = await fetch(`/api/crm/tickets/${approvalTicket._id}/resolution-approval`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action === "RETURN" ? { action, comment: reviewComment.trim() } : { action }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Qaror saqlanmadi");
+      setTickets((items) => items.map((item) => item._id === result._id ? { ...item, ...result } : item));
+      setApprovalTicket(null);
+      setReviewComment("");
+      window.dispatchEvent(new Event("crm-notifications-changed"));
+      toast.success(action === "APPROVE" ? "Ticket tasdiqlandi" : "Ticket operatorga qaytarildi");
+    } catch (error: any) {
+      toast.error(error.message || "Qaror saqlanmadi");
+    } finally {
+      setApprovalLoading(false);
+    }
+  };
+
   const cards = [
     ["Ochiq", summary.open, MessageSquareText, "text-blue-600 bg-blue-500/10", "OPEN"],
     [
@@ -290,6 +334,62 @@ export default function CrmInbox({
         isOpen={executiveReportOpen}
         onClose={() => setExecutiveReportOpen(false)}
       />
+      <Dialog
+        open={!!approvalTicket}
+        onOpenChange={(open) => {
+          if (!open && !approvalLoading) {
+            setApprovalTicket(null);
+            setReviewComment("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Yakuniy qarorni ko‘rib chiqish</DialogTitle>
+            <DialogDescription>
+              Operator mijozga qo‘lda yuborgan SMS matnini tekshiring. Oxirgi qarorni admin beradi.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-xl border bg-muted/40 p-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Mijozga yuborilgan SMS
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+                {approvalTicket?.resolutionSmsText || "SMS matni kiritilmagan"}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold">Qaytarish sababi</label>
+              <Textarea
+                value={reviewComment}
+                onChange={(event) => setReviewComment(event.target.value)}
+                placeholder="Faqat operatorga qaytarishda majburiy..."
+                className="min-h-24"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              variant="outline"
+              onClick={() => reviewResolution("RETURN")}
+              disabled={approvalLoading}
+              className="border-rose-300 text-rose-700 hover:bg-rose-500/10"
+            >
+              {approvalLoading ? <Loader2 className="animate-spin" /> : <RotateCcw />}
+              Operatorga qaytarish
+            </Button>
+            <Button
+              onClick={() => reviewResolution("APPROVE")}
+              disabled={approvalLoading}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {approvalLoading ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
+              Tasdiqlash
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* Task nazorati hozircha admin va operator panellaridan yashirilgan. */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {cards.map(([label, value, Icon, style, filterKey]) => (
@@ -453,7 +553,7 @@ export default function CrmInbox({
                   key={t._id}
                   className={cn(
                     "border-t transition hover:bg-muted/40",
-                    isOverdue(t, nowIso) && "bg-rose-500/[.035]",
+                    isOverdue(t, nowIso) && "border-l-2 border-l-rose-300 bg-rose-500/[.055] hover:bg-rose-500/[.08] dark:border-l-rose-700",
                   )}
                 >
                   <td className="px-4 py-3">
@@ -484,7 +584,7 @@ export default function CrmInbox({
                     <Select value={t.priority || "NORMAL"} onValueChange={(value) => value && updateTicket(t, "priority", value)} disabled={updating === `${t._id}:priority`}><SelectTrigger className={cn("h-8 w-24 rounded-md border-transparent px-2 text-[10px] font-bold hover:border-border", priorityStyle[t.priority || "NORMAL"])}><SelectValue>{CRM_PRIORITY_LABELS[t.priority || "NORMAL"]}</SelectValue></SelectTrigger><SelectContent>{CRM_PRIORITIES.map((value) => <SelectItem key={value} value={value}>{CRM_PRIORITY_LABELS[value]}</SelectItem>)}</SelectContent></Select>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex min-w-32 flex-col gap-1"><Select value={t.status === "OPEN" ? "NEW" : (t.status || "NEW")} onValueChange={(value) => value && updateTicket(t, "status", value)} disabled={updating === `${t._id}:status` || ["RESOLVED", "CLOSED"].includes(t.status)}><SelectTrigger className={cn("h-8 w-32 rounded-md border-transparent px-2 text-[10px] font-bold hover:border-border", ["RESOLVED", "CLOSED"].includes(t.status) ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-foreground")}><SelectValue>{CRM_STATUS_LABELS[t.status] || "Yangi"}</SelectValue></SelectTrigger><SelectContent>{CRM_STATUSES.filter((value) => !["RESOLVED", "CLOSED"].includes(value)).map((value) => <SelectItem key={value} value={value}>{CRM_STATUS_LABELS[value]}</SelectItem>)}</SelectContent></Select>{t.resolutionApprovalStatus === "PENDING" && <span className="px-2 text-[9px] font-bold text-blue-600">Admin tasdig‘ida</span>}{t.resolutionApprovalStatus === "RETURNED" && <span className="px-2 text-[9px] font-bold text-rose-600">Operatorga qaytarilgan</span>}{isOverdue(t, nowIso) && <span className="px-2 text-[9px] font-bold text-rose-600">SLA kechikkan</span>}</div>
+                    <div className="flex min-w-32 flex-col gap-1"><Select value={t.status === "OPEN" ? "NEW" : (t.status || "NEW")} onValueChange={(value) => value && updateTicket(t, "status", value)} disabled={updating === `${t._id}:status` || ["RESOLVED", "CLOSED"].includes(t.status)}><SelectTrigger className={cn("h-8 w-32 rounded-md border-transparent px-2 text-[10px] font-bold hover:border-border", ["RESOLVED", "CLOSED"].includes(t.status) ? "bg-emerald-500/10 text-emerald-600" : "bg-muted text-foreground")}><SelectValue>{CRM_STATUS_LABELS[t.status] || "Yangi"}</SelectValue></SelectTrigger><SelectContent>{CRM_STATUSES.filter((value) => !["RESOLVED", "CLOSED"].includes(value)).map((value) => <SelectItem key={value} value={value}>{CRM_STATUS_LABELS[value]}</SelectItem>)}</SelectContent></Select>{t.resolutionApprovalStatus === "PENDING" && canApprove ? <Button type="button" size="sm" onClick={() => { setApprovalTicket(t); setReviewComment(""); }} className="h-7 w-32 rounded-md bg-blue-600 px-2 text-[10px] font-bold text-white shadow-sm hover:bg-blue-700"><ShieldCheck className="h-3 w-3" />Ko‘rib chiqish</Button> : t.resolutionApprovalStatus === "PENDING" ? <span className="px-2 text-[9px] font-bold text-blue-600">Admin tasdig‘ida</span> : null}{t.resolutionApprovalStatus === "RETURNED" && <span className="px-2 text-[9px] font-bold text-rose-600">Operatorga qaytarilgan</span>}{isOverdue(t, nowIso) && <span className="px-2 text-[9px] font-bold text-rose-600">{formatDuration(t.deadlineAt, nowIso)} o‘tgan</span>}</div>
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {formatUzDateTime(t.createdAt)}
@@ -499,17 +599,17 @@ export default function CrmInbox({
         </div>
         <div className="divide-y lg:hidden">
           {rows.map((t) => {
-            return <div key={t._id} className="p-4">
-              <div className="flex justify-between gap-3"><div className="min-w-0"><Link href={`/crm/tickets/${t._id}`} className="text-xs font-bold text-blue-600 hover:underline">{ticketPublicId(t)}</Link><Link href={`/crm/tickets/${t._id}`} className="mt-1 block truncate font-semibold hover:text-blue-600">{t.callerName || "Noma'lum"}</Link><div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"><button onClick={() => copyValue(normalizeUzPhone(t.callerPhone), "Telefon raqami")} className="cursor-copy truncate text-left hover:text-blue-600 hover:underline" title="Bosib nusxalash">{formatUzPhone(t.callerPhone)}</button>{t.orderId ? <button onClick={() => copyValue(t.orderId, "Order ID")} className="truncate cursor-copy hover:text-blue-600 hover:underline">· {t.orderId}</button> : <span className="truncate">· Order yo'q</span>}</div></div><span className="shrink-0 text-xs font-semibold text-muted-foreground">{formatDuration(t.createdAt, t.resolvedAt || nowIso)}</span></div>
+            return <div key={t._id} className={cn("p-4", isOverdue(t, nowIso) && "border-l-2 border-l-rose-300 bg-rose-500/[.055] dark:border-l-rose-700")}>
+              <div className="flex justify-between gap-3"><div className="min-w-0"><Link href={`/crm/tickets/${t._id}`} className="text-xs font-bold text-blue-600 hover:underline">{ticketPublicId(t)}</Link><Link href={`/crm/tickets/${t._id}`} className="mt-1 block truncate font-semibold hover:text-blue-600">{t.callerName || "Noma'lum"}</Link><div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"><button onClick={() => copyValue(normalizeUzPhone(t.callerPhone), "Telefon raqami")} className="cursor-copy truncate text-left hover:text-blue-600 hover:underline" title="Bosib nusxalash">{formatUzPhone(t.callerPhone)}</button>{t.orderId ? <button onClick={() => copyValue(t.orderId, "Order ID")} className="truncate cursor-copy hover:text-blue-600 hover:underline">· {t.orderId}</button> : <span className="truncate">· Order yo‘q</span>}</div></div><span className="shrink-0 text-xs font-semibold text-muted-foreground">{formatDuration(t.createdAt, t.resolvedAt || nowIso)}</span></div>
               <Link href={`/crm/tickets/${t._id}`} className="mt-3 block line-clamp-2 text-sm">{t.problem}</Link>
               <div className={cn("mt-3 grid gap-2", canAssign ? "grid-cols-3" : "grid-cols-2")}>
                 {canAssign && <Select value={t.assignedTo?._id || "UNASSIGNED"} onValueChange={(value) => value && updateTicket(t, "assignedTo", value)} disabled={updating === `${t._id}:assignedTo`}><SelectTrigger className="h-9 min-w-0 rounded-md px-2 text-[10px]"><SelectValue>{t.assignedTo?.name || "Navbatda"}</SelectValue></SelectTrigger><SelectContent><SelectItem value="UNASSIGNED">Navbatda</SelectItem>{agents.map((agent) => <SelectItem key={agent._id} value={agent._id}>{agent.name}</SelectItem>)}</SelectContent></Select>}
                 <Select value={t.priority || "NORMAL"} onValueChange={(value) => value && updateTicket(t, "priority", value)} disabled={updating === `${t._id}:priority`}><SelectTrigger className={cn("h-9 min-w-0 rounded-md px-2 text-[10px] font-bold", priorityStyle[t.priority || "NORMAL"])}><SelectValue>{CRM_PRIORITY_LABELS[t.priority || "NORMAL"]}</SelectValue></SelectTrigger><SelectContent>{CRM_PRIORITIES.map((value) => <SelectItem key={value} value={value}>{CRM_PRIORITY_LABELS[value]}</SelectItem>)}</SelectContent></Select>
                 <Select value={t.status === "OPEN" ? "NEW" : (t.status || "NEW")} onValueChange={(value) => value && updateTicket(t, "status", value)} disabled={updating === `${t._id}:status` || ["RESOLVED", "CLOSED"].includes(t.status)}><SelectTrigger className="h-9 min-w-0 rounded-md px-2 text-[10px] font-bold"><SelectValue>{CRM_STATUS_LABELS[t.status] || "Yangi"}</SelectValue></SelectTrigger><SelectContent>{CRM_STATUSES.filter((value) => !["RESOLVED", "CLOSED"].includes(value)).map((value) => <SelectItem key={value} value={value}>{CRM_STATUS_LABELS[value]}</SelectItem>)}</SelectContent></Select>
               </div>
-              {t.resolutionApprovalStatus === "PENDING" && <p className="mt-2 text-[10px] font-bold text-blue-600">Admin tasdig‘i kutilmoqda</p>}
+              {t.resolutionApprovalStatus === "PENDING" && canApprove ? <Button type="button" size="sm" onClick={() => { setApprovalTicket(t); setReviewComment(""); }} className="mt-2 h-8 rounded-md bg-blue-600 px-3 text-[10px] font-bold text-white hover:bg-blue-700"><ShieldCheck className="h-3.5 w-3.5" />Ko‘rib chiqish</Button> : t.resolutionApprovalStatus === "PENDING" ? <p className="mt-2 text-[10px] font-bold text-blue-600">Admin tasdig‘i kutilmoqda</p> : null}
               {t.resolutionApprovalStatus === "RETURNED" && <p className="mt-2 text-[10px] font-bold text-rose-600">Admin operatorga qaytardi</p>}
-              {isOverdue(t, nowIso) && <p className="mt-2 text-[10px] font-bold text-rose-600">SLA muddati kechikkan</p>}
+              {isOverdue(t, nowIso) && <p className="mt-2 text-[10px] font-bold text-rose-600">Belgilangan muddatdan {formatDuration(t.deadlineAt, nowIso)} o‘tgan</p>}
             </div>
           })}
         </div>

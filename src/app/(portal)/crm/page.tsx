@@ -6,8 +6,7 @@ import { Ticket } from "@/models/Ticket";
 import { CrmNotification } from "@/models/CrmNotification";
 import { User } from "@/models/User";
 import { canUseCrm, ticketScope } from "@/lib/support/access";
-import { canSeeAllTickets } from "@/lib/support/permissions";
-import { canReassignTickets } from "@/lib/support/permissions";
+import { canApproveTicketResolution, canReassignTickets, canSeeAllTickets } from "@/lib/support/permissions";
 import CrmInbox from "@/components/crm/CrmInbox";
 
 export default async function CrmPage() {
@@ -21,5 +20,5 @@ export default async function CrmPage() {
     User.find({ role: "SUPPORT" }).select("name email image").sort({ name: 1 }).lean(),
     CrmNotification.find({ userId: user.id }).sort({ createdAt: -1 }).limit(50).lean(),
   ]);
-  return <CrmInbox initialTickets={JSON.parse(JSON.stringify(tickets))} agents={JSON.parse(JSON.stringify(agents))} initialTasks={[]} initialNotifications={JSON.parse(JSON.stringify(notifications))} currentUserId={user.id} canAssign={canReassignTickets(user)} nowIso={new Date().toISOString()} />;
+  return <CrmInbox initialTickets={JSON.parse(JSON.stringify(tickets))} agents={JSON.parse(JSON.stringify(agents))} initialTasks={[]} initialNotifications={JSON.parse(JSON.stringify(notifications))} currentUserId={user.id} canAssign={canReassignTickets(user)} canApprove={canApproveTicketResolution(user)} nowIso={new Date().toISOString()} />;
 }
