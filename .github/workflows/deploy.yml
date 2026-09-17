@@ -23,47 +23,131 @@ jobs:
       - name: Configure SSH
         env:
           PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_USER: ${{ secrets.PROD_USER }}
           PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
+          PROD_KNOWN_HOSTS: ${{ secrets.PROD_KNOWN_HOSTS }}
         run: |
+          set -euo pipefail
           test -n "$PROD_HOST" || (echo "PROD_HOST secret is required" && exit 1)
+          test -n "$PROD_USER" || (echo "PROD_USER secret is required" && exit 1)
           test -n "$PROD_SSH_KEY" || (echo "PROD_SSH_KEY secret is required" && exit 1)
+          PROD_SSH_PORT="${PROD_SSH_PORT:-22}"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf "%s\n" "$PROD_SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$PROD_HOST" >> ~/.ssh/known_hosts
+
+          # A pinned value is preferred. The scan fallback is retained for existing deployments.
+          if [ -n "${PROD_KNOWN_HOSTS:-}" ]; then
+            printf "%s\n" "$PROD_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            for attempt in 1 2 3 4; do
+              if ssh-keyscan -T 10 -t ed25519,rsa -p "$PROD_SSH_PORT" -H "$PROD_HOST" > /tmp/sahiy_known_hosts 2>/dev/null && test -s /tmp/sahiy_known_hosts; then
+                mv /tmp/sahiy_known_hosts ~/.ssh/known_hosts
+                break
+              fi
+              echo "SSH host-key scan attempt ${attempt}/4 failed; retrying..."
+              sleep $((attempt * 5))
+            done
+            test -s ~/.ssh/known_hosts || (echo "Could not obtain production SSH host key" && exit 1)
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+          cat > ~/.ssh/config <<EOF
+          Host production
+            HostName ${PROD_HOST}
+            User ${PROD_USER}
+            Port ${PROD_SSH_PORT}
+            IdentityFile ~/.ssh/id_rsa
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 20
+            ServerAliveInterval 15
+            ServerAliveCountMax 3
+            ControlMaster auto
+            ControlPersist 10m
+            ControlPath ~/.ssh/cm-%C
+            LogLevel ERROR
+          EOF
+          chmod 600 ~/.ssh/config
+
+          retry() {
+            local max_attempts="$1" delay="$2" status attempt=1
+            shift 2
+            while true; do
+              if "$@"; then return 0; fi
+              status=$?
+              if [ "$attempt" -ge "$max_attempts" ]; then return "$status"; fi
+              echo "SSH transport attempt ${attempt}/${max_attempts} failed; retrying in ${delay}s..."
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
+
+          # Fail early with a clear transport error and keep one authenticated connection for upload/deploy.
+          retry 4 5 ssh production true
 
       - name: Package and upload release
         env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
           PROD_USER: ${{ secrets.PROD_USER }}
         run: |
+          set -euo pipefail
           test -n "$PROD_USER" || (echo "PROD_USER secret is required" && exit 1)
+          retry() {
+            local max_attempts="$1" delay="$2" status attempt=1
+            shift 2
+            while true; do
+              if "$@"; then return 0; fi
+              status=$?
+              if [ "$attempt" -ge "$max_attempts" ]; then return "$status"; fi
+              echo "Upload attempt ${attempt}/${max_attempts} failed; retrying in ${delay}s..."
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
           tar --exclude=node_modules --exclude=.next --exclude=.git --exclude=*.tar.gz --exclude='.env*' --exclude='*firebase-adminsdk*.json' --warning=no-file-changed -czf /tmp/sahiy-docs.tar.gz .
-          scp -i ~/.ssh/id_rsa /tmp/sahiy-docs.tar.gz ${PROD_USER}@${PROD_HOST}:/tmp/sahiy-docs.tar.gz
+          retry 4 5 scp /tmp/sahiy-docs.tar.gz production:/tmp/sahiy-docs.tar.gz
 
       - name: Deploy with Docker Compose
-        env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_USER: ${{ secrets.PROD_USER }}
         run: |
-          ssh -i ~/.ssh/id_rsa ${PROD_USER}@${PROD_HOST} 'bash -s' <<'REMOTE'
           set -euo pipefail
-          test -f /root/sahiy-docs/.env || (echo 'Server .env file is missing' && exit 1)
-          rm -rf /root/sahiy-docs-release
-          mkdir -p /root/sahiy-docs-release
-          tar -xzf /tmp/sahiy-docs.tar.gz -C /root/sahiy-docs-release
-          rm -f /tmp/sahiy-docs.tar.gz
-          cp /root/sahiy-docs/.env /root/sahiy-docs-release/.env
-          chmod 600 /root/sahiy-docs-release/.env
-          cd /root/sahiy-docs-release
-          docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml build
-          (docker stop sahiy-docs 2>/dev/null || true) && (docker rm sahiy-docs 2>/dev/null || true)
-          docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
-          rm -rf /root/sahiy-docs-previous
-          mv /root/sahiy-docs /root/sahiy-docs-previous
-          mv /root/sahiy-docs-release /root/sahiy-docs
+          retry() {
+            local max_attempts="$1" delay="$2" status attempt=1
+            shift 2
+            while true; do
+              if "$@"; then return 0; fi
+              status=$?
+              if [ "$attempt" -ge "$max_attempts" ]; then return "$status"; fi
+              echo "Remote deploy attempt ${attempt}/${max_attempts} failed; retrying in ${delay}s..."
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
+          deploy_remote() {
+            ssh production 'bash -s' <<'REMOTE'
+            set -euo pipefail
+            test -f /root/sahiy-docs/.env || (echo 'Server .env file is missing' && exit 1)
+            rm -rf /root/sahiy-docs-release
+            mkdir -p /root/sahiy-docs-release
+            tar -xzf /tmp/sahiy-docs.tar.gz -C /root/sahiy-docs-release
+            rm -f /tmp/sahiy-docs.tar.gz
+            cp /root/sahiy-docs/.env /root/sahiy-docs-release/.env
+            chmod 600 /root/sahiy-docs-release/.env
+            cd /root/sahiy-docs-release
+            docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml build
+            (docker stop sahiy-docs 2>/dev/null || true) && (docker rm sahiy-docs 2>/dev/null || true)
+            docker compose -p sahiy-docs --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
+            rm -rf /root/sahiy-docs-previous
+            mv /root/sahiy-docs /root/sahiy-docs-previous
+            mv /root/sahiy-docs-release /root/sahiy-docs
           REMOTE
+          }
+          retry 4 5 deploy_remote
 
       - name: Production health check
         run: |
