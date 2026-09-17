@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   X,
   UploadCloud,
@@ -15,6 +16,10 @@ import {
   Loader2,
   Paperclip,
   Plus,
+  Check,
+  History,
+  MessageSquareText,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,6 +42,7 @@ interface CreateTicketModalProps {
   onSuccess: (newTicket: any) => void;
   linkedCallId?: string;
   prefillPhone?: string;
+  currentUserId?: string;
 }
 
 interface SlaPreset {
@@ -52,11 +58,12 @@ export default function CreateTicketModal({
   isOpen,
   onClose,
   agents,
-  canAssign,
   onSuccess,
   linkedCallId,
   prefillPhone,
+  currentUserId = "",
 }: CreateTicketModalProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
   const [slaPresets, setSlaPresets] = useState<SlaPreset[]>(INITIAL_SLA_PRESETS);
@@ -73,12 +80,12 @@ export default function CreateTicketModal({
     customerId: "",
     customerName: "",
     phone: "",
-    orderIds: [""],
-    category: "DELIVERY_DELAY",
-    replacementOldValue: "",
-    replacementNewValue: "",
+    orderIssues: [{ orderId: "", category: "DELIVERY_DELAY", replacementOldValue: "", replacementNewValue: "" }],
     description: "",
-    assignedTo: "",
+    assignedTo: currentUserId,
+    collaboratorIds: [] as string[],
+    consultationRecipientIds: [] as string[],
+    consultationQuestion: "",
     priority: "NORMAL",
     status: "NEW",
     deadlineHours: 24,
@@ -91,12 +98,21 @@ export default function CreateTicketModal({
   const [uploading, setUploading] = useState(false);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [relatedTickets, setRelatedTickets] = useState<any[]>([]);
+  const [relatedChats, setRelatedChats] = useState<any[]>([]);
+  const [restrictedDgMatch, setRestrictedDgMatch] = useState(false);
+  const [relatedLoading, setRelatedLoading] = useState(false);
+  const [duplicateDecision, setDuplicateDecision] = useState<"" | "CREATE_NEW">("");
 
-  useEffect(() => {
-    if (isOpen && prefillPhone) {
-      setForm((prev) => ({ ...prev, phone: prefillPhone }));
-    }
-  }, [isOpen, prefillPhone]);
+  const orderIds = useMemo(
+    () => form.orderIssues.map((item) => item.orderId.trim().toUpperCase()).filter(Boolean),
+    [form.orderIssues],
+  );
+
+  const selectedParticipantIds = useMemo(
+    () => new Set([form.assignedTo, ...form.collaboratorIds].filter(Boolean)),
+    [form.assignedTo, form.collaboratorIds],
+  );
 
   const formatDisplayDateTime = (isoOrLocalStr: string) => {
     if (!isoOrLocalStr) return "";
@@ -245,34 +261,43 @@ export default function CreateTicketModal({
       setForm({
         customerId: "",
         customerName: "",
-        phone: "",
-        orderIds: [""],
-        category: "DELIVERY_DELAY",
-        replacementOldValue: "",
-        replacementNewValue: "",
+        phone: prefillPhone || "",
+        orderIssues: [{ orderId: "", category: "DELIVERY_DELAY", replacementOldValue: "", replacementNewValue: "" }],
         description: "",
-        assignedTo: "",
+        assignedTo: currentUserId,
+        collaboratorIds: [],
+        consultationRecipientIds: [],
+        consultationQuestion: "",
         priority: "NORMAL",
         status: "NEW",
         deadlineHours: 24,
         deadlineAt: initialDeadlineAt,
       });
       setAttachments([]);
+      setRelatedTickets([]);
+      setRelatedChats([]);
+      setRestrictedDgMatch(false);
+      setDuplicateDecision("");
       setCustomSlaHours("");
       setSlaPreviewHours(null);
       setFormError("");
       setDiscardConfirmOpen(false);
     }
-  }, [isOpen]);
+  }, [isOpen, currentUserId, prefillPhone]);
 
   const hasUnsavedChanges = Boolean(
     form.customerId.trim() ||
       form.customerName.trim() ||
       form.phone.trim() ||
-      form.orderIds.join("").trim() ||
+      form.orderIssues.some((item) => item.orderId.trim()) ||
       form.description.trim() ||
-      form.assignedTo ||
-      form.category !== "DELIVERY_DELAY" ||
+      // `assignedTo` opens as the creator by design; that default alone must
+      // not make an untouched modal show a destructive-close confirmation.
+      (form.assignedTo && form.assignedTo !== currentUserId) ||
+      form.collaboratorIds.length ||
+      form.consultationRecipientIds.length ||
+      form.consultationQuestion.trim() ||
+      form.orderIssues.some((item) => item.category !== "DELIVERY_DELAY") ||
       form.priority !== "NORMAL" ||
       form.deadlineHours !== 24 ||
       customSlaHours ||
@@ -349,16 +374,102 @@ export default function CreateTicketModal({
     void uploadFiles(Array.from(e.target.files || []));
   };
 
+  const togglePerson = (key: "collaboratorIds" | "consultationRecipientIds", personId: string) => {
+    if (!personId || personId === currentUserId) return;
+    setForm((current) => ({
+      ...current,
+      [key]: current[key].includes(personId)
+        ? current[key].filter((id) => id !== personId)
+        : [...current[key], personId],
+    }));
+  };
+
+  useEffect(() => {
+    if (!isOpen || !orderIds.length) {
+      setRelatedTickets([]);
+      setRelatedChats([]);
+      setRestrictedDgMatch(false);
+      setRelatedLoading(false);
+      return;
+    }
+    // A deliberate “create new” choice only applies to the exact DG set the
+    // user saw. Editing any DG asks for that decision again.
+    setDuplicateDecision("");
+    setRestrictedDgMatch(false);
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setRelatedLoading(true);
+      try {
+        const query = new URLSearchParams({ dgs: orderIds.join(",") });
+        const response = await fetch(`/api/crm/tickets/related?${query.toString()}`, {
+          signal: controller.signal,
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(data?.error || "Avvalgi ticketlarni tekshirib bo‘lmadi");
+        setRelatedTickets(Array.isArray(data?.tickets) ? data.tickets : []);
+        setRelatedChats(Array.isArray(data?.chatMatches) ? data.chatMatches : []);
+        setRestrictedDgMatch(Boolean(data?.hasRestrictedMatch));
+      } catch (error: any) {
+        if (error?.name !== "AbortError") {
+          setRelatedTickets([]);
+          setRelatedChats([]);
+          setRestrictedDgMatch(false);
+        }
+      } finally {
+        if (!controller.signal.aborted) setRelatedLoading(false);
+      }
+    }, 350);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [isOpen, orderIds]);
+
+  const continueTicket = (ticketId: string) => {
+    onClose();
+    router.push(`/crm/tickets/${ticketId}`);
+  };
+
+  const openChatHistory = (conversationId: string) => {
+    onClose();
+    router.push(`/chat?conversation=${encodeURIComponent(conversationId)}`);
+  };
+
+  const reopenTicket = async (ticketId: string) => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/crm/tickets/${ticketId}/reopen`, { method: "POST" });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || "Ticketni qayta ochib bo‘lmadi");
+      toast.success("Ticket qayta ochildi — shu history davom ettiriladi");
+      continueTicket(ticketId);
+    } catch (error: any) {
+      toast.error(error?.message || "Ticketni qayta ochib bo‘lmadi");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
-    if (!form.customerId.trim() && form.orderIds.filter(Boolean).length === 0) {
+    if (!form.customerId.trim() && orderIds.length === 0) {
       const message = "User ID yoki Order ID dan birini kiriting";
       setFormError(message);
       return toast.error(message);
     }
     if (form.description.trim().length < 3) {
       const message = "Muammo va izoh kamida 3 ta belgidan iborat bo'lishi kerak";
+      setFormError(message);
+      return toast.error(message);
+    }
+    if (form.consultationRecipientIds.length && form.consultationQuestion.trim().length < 3) {
+      const message = "Maslahat so‘rovi uchun xabarni yozing";
+      setFormError(message);
+      return toast.error(message);
+    }
+    if (form.consultationQuestion.trim() && !form.consultationRecipientIds.length) {
+      const message = "Maslahat so‘rovi uchun kamida bitta odamni belgilang";
       setFormError(message);
       return toast.error(message);
     }
@@ -371,22 +482,33 @@ export default function CreateTicketModal({
     setLoading(true);
 
     try {
-      const orderIdStr = form.orderIds.filter(Boolean).join(", ");
+      const orderIssues = form.orderIssues
+        .map((item) => ({
+          orderId: item.orderId.trim().toUpperCase(),
+          category: item.category,
+          replacementOldValue: item.replacementOldValue.trim() || undefined,
+          replacementNewValue: item.replacementNewValue.trim() || undefined,
+        }))
+        .filter((item) => item.orderId);
       const payload = {
         customerId: form.customerId || undefined,
         customerName: form.customerName || undefined,
         phone: form.phone || undefined,
-        orderId: orderIdStr || undefined,
-        category: form.category,
-        replacementOldValue: form.category === "REPLACEMENT" ? form.replacementOldValue : undefined,
-        replacementNewValue: form.category === "REPLACEMENT" ? form.replacementNewValue : undefined,
+        orderId: orderIssues.map((item) => item.orderId).join(", ") || undefined,
+        category: orderIssues[0]?.category || "DELIVERY_DELAY",
+        orderIssues,
         description: form.description,
         assignedTo: form.assignedTo || undefined,
+        collaboratorIds: form.collaboratorIds,
+        consultations: form.consultationQuestion.trim() && form.consultationRecipientIds.length
+          ? form.consultationRecipientIds.map((operatorId) => ({ operatorId, question: form.consultationQuestion.trim() }))
+          : undefined,
         priority: form.priority,
         status: form.status,
         deadlineAt: deadline.toISOString(),
         attachments,
         linkedCallId: linkedCallId || undefined,
+        duplicateDecision: duplicateDecision || undefined,
       };
 
       const res = await fetch("/api/crm/tickets", {
@@ -397,6 +519,12 @@ export default function CreateTicketModal({
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
+        const conflictTickets = data?.relatedTickets || data?.tickets || data?.candidates;
+        if (res.status === 409 && Array.isArray(conflictTickets)) {
+          setRelatedTickets(conflictTickets);
+          setRestrictedDgMatch(Boolean(data?.restrictedMatch));
+          setDuplicateDecision("");
+        }
         throw new Error(data?.error || `Murojaat yaratilmadi (${res.status})`);
       }
 
@@ -422,7 +550,7 @@ export default function CreateTicketModal({
       <DialogContent
         keepMounted
         overlayClassName="h-dvh w-screen bg-slate-950/45 backdrop-blur-none supports-backdrop-filter:backdrop-blur-none"
-        className="gap-0 overflow-hidden bg-background p-0 duration-75 data-open:zoom-in-100 data-closed:zoom-out-100 sm:max-w-2xl"
+        className="max-h-[calc(100dvh-1.5rem)] gap-0 overflow-hidden bg-background p-0 duration-75 data-open:zoom-in-100 data-closed:zoom-out-100 sm:max-w-2xl"
       >
         <DialogHeader className="px-5 py-4 border-b bg-muted/20">
           <DialogTitle className="text-lg font-bold">Tezkor Murojaat Qo'shish</DialogTitle>
@@ -463,7 +591,7 @@ export default function CreateTicketModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-5 overflow-y-auto max-h-[80vh]">
+        <form onSubmit={handleSubmit} className="min-h-0 max-h-[calc(100dvh-7rem)] space-y-5 overflow-y-auto p-5">
           {/* Client Info */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
@@ -506,93 +634,149 @@ export default function CreateTicketModal({
             </div>
           </div>
 
-          {/* Order ID & Category */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Buyurtma (DG raqamlar)</Label>
-                <div className="space-y-2">
-                  {form.orderIds.map((id, index) => (
-                    <div key={index} className="flex items-center gap-2 relative">
-                      <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
+          {/* Every DG has its own category: a single ticket can safely cover several orders. */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Label className="text-xs font-semibold">Buyurtmalar va muammo turlari</Label>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">Har bir DG uchun alohida muammo turini tanlang.</p>
+              </div>
+              {relatedLoading && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+            </div>
+            <div className="space-y-2">
+              {form.orderIssues.map((issue, index) => (
+                <div key={index} className="rounded-lg border bg-muted/15 p-2.5">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="relative min-w-0 flex-1">
+                      <Package className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
-                        value={id}
-                        onChange={(e) => {
-                          const newIds = [...form.orderIds];
-                          newIds[index] = e.target.value;
-                          setForm({ ...form, orderIds: newIds });
-                        }}
+                        value={issue.orderId}
+                        onChange={(event) => setForm((current) => ({
+                          ...current,
+                          orderIssues: current.orderIssues.map((item, itemIndex) => itemIndex === index ? { ...item, orderId: event.target.value.toUpperCase() } : item),
+                        }))}
                         placeholder="DG0099993"
-                        className="pl-9 text-sm"
+                        className="h-9 pl-9 text-sm"
                       />
-                      {index === form.orderIds.length - 1 ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="h-9 w-9 shrink-0"
-                          onClick={() => setForm({ ...form, orderIds: [...form.orderIds, ""] })}
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className="h-9 w-9 shrink-0 text-destructive hover:bg-destructive/10"
-                          onClick={() => {
-                            const newIds = form.orderIds.filter((_, i) => i !== index);
-                            setForm({ ...form, orderIds: newIds });
-                          }}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      )}
                     </div>
-                  ))}
+                    <div className="relative min-w-0 flex-1">
+                      <select
+                        required
+                        value={issue.category}
+                        onChange={(event) => setForm((current) => ({
+                          ...current,
+                          orderIssues: current.orderIssues.map((item, itemIndex) => itemIndex === index ? { ...item, category: event.target.value } : item),
+                        }))}
+                        className="h-9 w-full appearance-none rounded-lg border border-input bg-background px-2.5 pr-8 text-sm text-foreground outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
+                      >
+                        {CRM_CATEGORIES.map((category) => <option key={category} value={category}>{CRM_CATEGORY_LABELS[category] || category}</option>)}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                    {form.orderIssues.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-9 shrink-0 text-destructive hover:bg-destructive/10"
+                        onClick={() => setForm((current) => ({ ...current, orderIssues: current.orderIssues.filter((_, itemIndex) => itemIndex !== index) }))}
+                        aria-label="DGni olib tashlash"
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    ) : null}
+                  </div>
+                  {issue.category === "REPLACEMENT" && (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <Input
+                        value={issue.replacementOldValue}
+                        onChange={(event) => setForm((current) => ({ ...current, orderIssues: current.orderIssues.map((item, itemIndex) => itemIndex === index ? { ...item, replacementOldValue: event.target.value } : item) }))}
+                        placeholder="Qaytayotgan mahsulot / eski DG"
+                        className="h-8 text-xs"
+                      />
+                      <Input
+                        value={issue.replacementNewValue}
+                        onChange={(event) => setForm((current) => ({ ...current, orderIssues: current.orderIssues.map((item, itemIndex) => itemIndex === index ? { ...item, replacementNewValue: event.target.value } : item) }))}
+                        placeholder="O‘rniga kiritilgan yangi DG"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  )}
                 </div>
-              </div>
+              ))}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg text-xs"
+              onClick={() => setForm((current) => ({ ...current, orderIssues: [...current.orderIssues, { orderId: "", category: "DELIVERY_DELAY", replacementOldValue: "", replacementNewValue: "" }] }))}
+            >
+              <Plus className="size-3.5" /> Yana DG qo‘shish
+            </Button>
+          </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Muammo turi *</Label>
-              <div className="relative">
-              <select
-                required
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                className="h-8 w-full appearance-none rounded-lg border border-input bg-background px-2.5 pr-8 text-sm text-foreground outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
-              >
-                {CRM_CATEGORIES.map((cat) => <option key={cat} value={cat}>{CRM_CATEGORY_LABELS[cat] || cat}</option>)}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          {(relatedTickets.length > 0 || relatedChats.length > 0 || restrictedDgMatch) && (
+            <div className="rounded-xl border border-amber-300 bg-amber-500/10 p-3" aria-live="polite">
+              <div className="flex items-start gap-2">
+                <History className="mt-0.5 size-4 shrink-0 text-amber-700" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-amber-800 dark:text-amber-200">
+                    {relatedTickets.length
+                      ? "Bu DG bo‘yicha avvalgi ticket topildi"
+                      : restrictedDgMatch
+                        ? "Bu DG bo‘yicha boshqa operatorning faol ticketi bor"
+                        : "Bu DG chat tarixida topildi"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-amber-800/80 dark:text-amber-200/80">
+                    {relatedTickets.length
+                      ? "Yangi ticket ochishdan oldin shu tarixni davom ettiring yoki yopilgan ticketni qayta oching."
+                      : restrictedDgMatch
+                        ? "Ticket tafsilotlari sizga ochiq emas. Rahbar orqali davom ettiring yoki bu alohida muammo ekanini tasdiqlang."
+                        : "Yangi ticket yaratishdan oldin pastdagi chatdagi oldingi yozishmalarni ko‘rib chiqing."}
+                  </p>
+                  {relatedTickets.length > 0 && <div className="mt-2 space-y-1.5">
+                    {relatedTickets.slice(0, 4).map((related) => {
+                      const isClosed = ["RESOLVED", "CLOSED"].includes(related.status);
+                      return (
+                        <div key={related._id} className="flex flex-col gap-2 rounded-lg border border-amber-300/60 bg-background/70 p-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold">{related.ticketNumber || "Ticket"} · {related.problem}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {isClosed ? "Yopilgan" : "Hozir jarayonda"}
+                              {related.matchSources?.includes("CONVERSATION") ? " · ticket tarixida DG qaydi ham bor" : ""}
+                            </p>
+                          </div>
+                          <Button type="button" size="sm" variant={isClosed ? "outline" : "default"} className="h-7 shrink-0 text-[11px]" disabled={loading} onClick={() => isClosed ? void reopenTicket(related._id) : continueTicket(related._id)}>
+                            {isClosed ? "Qayta ochish" : "Davom ettirish"}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>}
+                  {relatedChats.length > 0 && (
+                    <div className="mt-2 space-y-1.5 border-t border-amber-300/60 pt-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800/80 dark:text-amber-200/80">Chat tarixida</p>
+                      {relatedChats.slice(0, 3).map((chat) => (
+                        <div key={chat.conversationId} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-amber-300/60 bg-background/70 p-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold">{chat.name || "Jamoaviy chat"}</p>
+                            <p className="truncate text-[10px] text-muted-foreground">{chat.snippet}</p>
+                          </div>
+                          <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 text-[11px]" onClick={() => openChatHistory(chat.conversationId)}>
+                            Chatni ochish
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(relatedTickets.length > 0 || restrictedDgMatch) && <button type="button" className="mt-2 text-[11px] font-semibold text-amber-800 underline-offset-2 hover:underline dark:text-amber-200" onClick={() => setDuplicateDecision("CREATE_NEW")}>
+                    Bu boshqa muammo — baribir yangi ticket yarataman
+                  </button>}
+                </div>
               </div>
             </div>
-            </div>
-
-            {form.category === "REPLACEMENT" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 rounded-lg">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-blue-700 dark:text-blue-400">Eski mahsulot (DG/Link) *</Label>
-                  <Input
-                    required
-                    value={form.replacementOldValue}
-                    onChange={(e) => setForm({ ...form, replacementOldValue: e.target.value })}
-                    placeholder="Qaytayotgan mahsulot"
-                    className="text-sm bg-white dark:bg-background border-blue-200 dark:border-blue-800"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-blue-700 dark:text-blue-400">Yangi zakaz (DG/Link) *</Label>
-                  <Input
-                    required
-                    value={form.replacementNewValue}
-                    onChange={(e) => setForm({ ...form, replacementNewValue: e.target.value })}
-                    placeholder="O'rniga kiritilgan zakaz"
-                    className="text-sm bg-white dark:bg-background border-blue-200 dark:border-blue-800"
-                  />
-                </div>
-              </div>
-            )}
+          )}
 
             {/* Problem description */}
           <div className="space-y-1.5">
@@ -607,7 +791,7 @@ export default function CreateTicketModal({
             />
           </div>
 
-          {/* Priority & Operator */}
+          {/* Priority & ownership */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Muhimlik darajasi</Label>
@@ -623,22 +807,87 @@ export default function CreateTicketModal({
               </div>
             </div>
 
-            {canAssign ? (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Biriktirilgan operator</Label>
-                <div className="relative">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Asosiy mas’ul</Label>
+              <div className="relative">
                 <select
                   value={form.assignedTo}
-                  onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    assignedTo: event.target.value,
+                    collaboratorIds: current.collaboratorIds.filter((id) => id !== event.target.value),
+                  }))}
                   className="h-8 w-full appearance-none rounded-lg border border-input bg-background px-2.5 pr-8 text-sm text-foreground outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
                 >
-                  <option value="">Biriktirilmagan (Navbatda)</option>
-                  {agents.map((ag) => <option key={ag._id} value={ag._id}>{ag.name}</option>)}
+                  {currentUserId && <option value={currentUserId}>Men — yaratuvchi (default)</option>}
+                  {agents.filter((agent) => agent._id !== currentUserId).map((agent) => <option key={agent._id} value={agent._id}>{agent.name}</option>)}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                </div>
               </div>
-            ) : null}
+              <p className="text-[10px] text-muted-foreground">Ticket yaratuvchisi standart mas’ul. Kerak bo‘lsa shu yerda almashtiring.</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-muted/15 p-3">
+            <div className="flex items-start gap-2">
+              <Users className="mt-0.5 size-4 text-brand-blue" />
+              <div className="min-w-0 flex-1">
+                <Label className="text-xs font-semibold">Yechimga jalb qilinganlar</Label>
+                <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">Bir nechta odamni belgilang — har biri ticketga kirib ishlashi va biriktirish notificationini oladi.</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {agents.filter((agent) => agent._id !== form.assignedTo && agent._id !== currentUserId).map((agent) => {
+                    const selected = form.collaboratorIds.includes(agent._id);
+                    return (
+                      <button
+                        key={agent._id}
+                        type="button"
+                        onClick={() => togglePerson("collaboratorIds", agent._id)}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold transition ${selected ? "border-brand-blue bg-brand-blue text-white" : "bg-background text-muted-foreground hover:border-brand-blue/50 hover:text-foreground"}`}
+                        aria-pressed={selected}
+                      >
+                        {selected && <Check className="size-3" />}{agent.name}
+                      </button>
+                    );
+                  })}
+                  {!agents.filter((agent) => agent._id !== form.assignedTo && agent._id !== currentUserId).length && <span className="text-[11px] text-muted-foreground">Qo‘shimcha operator yo‘q.</span>}
+                </div>
+                {selectedParticipantIds.size > 1 && <p className="mt-2 text-[10px] font-medium text-brand-blue">{selectedParticipantIds.size} kishi ticket ustida ishlaydi.</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-amber-300/70 bg-amber-500/5 p-3">
+            <div className="flex items-start gap-2">
+              <MessageSquareText className="mt-0.5 size-4 text-amber-600" />
+              <div className="min-w-0 flex-1">
+                <Label className="text-xs font-semibold">Yaratishda maslahat so‘rash (ixtiyoriy)</Label>
+                <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">Kimdan nima tekshirishi yoki qanday yordam berishini so‘rashingizni yozing. Ticket saqlanishi bilan ularga yuboriladi.</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {agents.filter((agent) => agent._id !== currentUserId).map((agent) => {
+                    const selected = form.consultationRecipientIds.includes(agent._id);
+                    return (
+                      <button
+                        key={agent._id}
+                        type="button"
+                        onClick={() => togglePerson("consultationRecipientIds", agent._id)}
+                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold transition ${selected ? "border-amber-500 bg-amber-500 text-black" : "bg-background text-muted-foreground hover:border-amber-500/70 hover:text-foreground"}`}
+                        aria-pressed={selected}
+                      >
+                        {selected && <Check className="size-3" />}{agent.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {form.consultationRecipientIds.length > 0 && (
+                  <Textarea
+                    value={form.consultationQuestion}
+                    onChange={(event) => setForm((current) => ({ ...current, consultationQuestion: event.target.value }))}
+                    placeholder="Masalan: Aka, bu DG uchun mahsulot sotib olinganmi? Tekshirib javob bering."
+                    className="mt-2 min-h-20 resize-none bg-background text-xs leading-5"
+                  />
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Minimal Clean SLA Section */}

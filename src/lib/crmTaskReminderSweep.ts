@@ -6,11 +6,21 @@ import { TicketTask } from "@/models/TicketTask";
 export async function runTaskReminderSweep(now = new Date()) {
   await dbConnect();
   const tasks = await TicketTask.find({ status: { $in: ["TODO", "IN_PROGRESS"] }, deadlineAt: { $lte: new Date(now.getTime() + 60 * 60 * 1000) } })
-    .populate("ticketId", "ticketNumber callerName")
+    .populate("ticketId", "ticketNumber callerName status resolutionApprovalStatus")
     .lean();
   let notified = 0;
 
   for (const task of tasks as any[]) {
+    const ticket = task.ticketId;
+    // Task UI hozir ishlatilmaydi, ammo eski tasklar bazada qolgan bo'lishi
+    // mumkin. Operator ticketni admin tasdig'iga jo'natgan bo'lsa, aynan shu
+    // eski task reminderlari ham uni bezovta qilmasligi kerak.
+    if (
+      ticket?.resolutionApprovalStatus === "PENDING" ||
+      ["RESOLVED", "CLOSED"].includes(ticket?.status)
+    ) {
+      continue;
+    }
     const remaining = new Date(task.deadlineAt).getTime() - now.getTime();
     const sent = new Set(task.sentEvents || []);
     let kind: "ONE_HOUR_LEFT" | "FIFTEEN_MINUTES_LEFT" | "OVERDUE" | null = null;
@@ -28,7 +38,6 @@ export async function runTaskReminderSweep(now = new Date()) {
     }
 
     if (!kind) continue;
-    const ticket = task.ticketId;
     const publicId = ticket?.ticketNumber ? `CRM-${String(ticket.ticketNumber).padStart(4, "0")}` : "CRM ticket";
     await createCrmNotification({
       userId: task.assignedTo.toString(),

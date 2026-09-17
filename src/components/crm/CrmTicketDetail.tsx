@@ -1,11 +1,12 @@
 "use client";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  Check,
   Clock3,
   Copy,
   FileText,
@@ -54,6 +55,56 @@ import {
   ticketPublicId,
 } from "@/lib/crm";
 
+type CrmAttachment = {
+  url: string;
+  name: string;
+  mimeType?: string;
+  size?: number;
+};
+
+const MAX_ATTACHMENT_COUNT = 10;
+const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024;
+
+function isImageAttachment(attachment: Partial<CrmAttachment>) {
+  return (
+    attachment.mimeType?.startsWith("image/") ||
+    /\.(avif|gif|heic|heif|jpe?g|png|webp)$/i.test(attachment.name || attachment.url || "")
+  );
+}
+
+function formatAttachmentSize(size?: number) {
+  if (!size) return "";
+  if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function copyText(value: string) {
+  if (!value) return false;
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Some browsers deny navigator.clipboard despite a user click. Fall back below.
+  }
+
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "");
+    textarea.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    textarea.remove();
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
 
 const typeMeta: Record<string, { label: string; icon: any; box: string }> = {
   CUSTOMER_MESSAGE: {
@@ -93,9 +144,14 @@ export default function CrmTicketDetail({
   const [loading, setLoading] = useState(false);
   const [body, setBody] = useState("");
   const initialAssignedId = ticket.assignedTo?._id || ticket.assignedTo;
-  const [type, setType] = useState(initialAssignedId === currentUser.id || canManage ? "OPERATOR_RESPONSE" : "INTERNAL_NOTE");
-  const [attachment, setAttachment] = useState<any>(null);
+  const initialCollaboratorIds = (ticket.collaborators || []).map((collaborator: any) => String(collaborator?._id || collaborator));
+  const initialIsSolver = String(initialAssignedId || "") === currentUser.id || initialCollaboratorIds.includes(currentUser.id);
+  const [type, setType] = useState(initialIsSolver || canManage ? "OPERATOR_RESPONSE" : "INTERNAL_NOTE");
+  const [attachments, setAttachments] = useState<CrmAttachment[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadInProgressRef = useRef(false);
   const [approvalOpen, setApprovalOpen] = useState(false);
   const [smsText, setSmsText] = useState(ticket.resolutionSmsText || "");
   const [reviewComment, setReviewComment] = useState("");
@@ -111,8 +167,11 @@ export default function CrmTicketDetail({
   const canApprove = currentUser.role !== "RAHBAR" && (["SUPER_ADMIN", "ADMIN"].includes(currentUser.role) || currentUser.isLead);
   const isSuperAdmin = currentUser.role === "SUPER_ADMIN";
   const assignedId = ticket.assignedTo?._id || ticket.assignedTo;
-  const isAssignedOperator = currentUser.role === "SUPPORT" && assignedId === currentUser.id;
+  const collaboratorIds = (ticket.collaborators || []).map((collaborator: any) => String(collaborator?._id || collaborator));
+  const isAssignedOperator = currentUser.role === "SUPPORT" && (String(assignedId || "") === currentUser.id || collaboratorIds.includes(currentUser.id));
   const canWriteCustomerReply = isAssignedOperator || canManage;
+  const createdById = String(ticket.createdBy?._id || ticket.createdBy || "");
+  const canReopen = currentUser.role !== "RAHBAR" && (canManage || isAssignedOperator || createdById === currentUser.id);
 
   const timeline = [
     ...(messages || []),
@@ -137,27 +196,109 @@ export default function CrmTicketDetail({
       setLoading(false);
     }
   };
-  const upload = async (file?: File) => {
-    if (!file) return;
+  const uploadFiles = async (incomingFiles: File[]) => {
+    if (closed) {
+      toast.error("Ticket yopilgan. Fayl yuborish uchun avval qayta oching");
+      return;
+    }
+    if (!incomingFiles.length || uploadInProgressRef.current) return;
+
+    const remainingSlots = Math.max(0, MAX_ATTACHMENT_COUNT - attachments.length);
+    if (!remainingSlots) {
+      toast.error(`Ko‘pi bilan ${MAX_ATTACHMENT_COUNT} ta fayl biriktirish mumkin`);
+      return;
+    }
+
+    const selectedFiles = incomingFiles.slice(0, remainingSlots);
+    if (incomingFiles.length > remainingSlots) {
+      toast.warning(`Faqat ${remainingSlots} ta fayl qo‘shildi`);
+    }
+
+    uploadInProgressRef.current = true;
     setUploading(true);
+    const uploadedFiles: CrmAttachment[] = [];
     try {
-      const data = new FormData();
-      data.append("file", file);
-      const res = await fetch("/api/crm/upload", {
-        method: "POST",
-        body: data,
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
-      setAttachment(json);
+      for (const file of selectedFiles) {
+        if (file.size > MAX_ATTACHMENT_SIZE) {
+          toast.error(`${file.name || "Fayl"} 5 MB dan katta`);
+          continue;
+        }
+
+        const data = new FormData();
+        data.append("file", file);
+        const res = await fetch("/api/crm/upload", {
+          method: "POST",
+          body: data,
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          toast.error(json?.error || `${file.name || "Fayl"} yuklanmadi`);
+          continue;
+        }
+        uploadedFiles.push({
+          url: json.url,
+          name: json.name || file.name,
+          mimeType: json.mimeType || file.type,
+          size: json.size || file.size,
+        });
+      }
+
+      if (uploadedFiles.length) {
+        setAttachments((current) => [...current, ...uploadedFiles].slice(0, MAX_ATTACHMENT_COUNT));
+        toast.success(`${uploadedFiles.length} ta fayl biriktirildi`);
+      }
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e.message || "Fayl yuklanmadi");
     } finally {
+      uploadInProgressRef.current = false;
       setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
+  const reopenTicket = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/crm/tickets/${ticket._id}/reopen`, { method: "POST" });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || "Ticketni qayta ochib bo‘lmadi");
+      toast.success("Ticket qayta ochildi va avvalgi tarix saqlandi");
+      router.refresh();
+    } catch (error: any) {
+      toast.error(error?.message || "Ticketni qayta ochib bo‘lmadi");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleComposerPaste = (event: any) => {
+    if (closed) return;
+    const clipboard = event.clipboardData;
+    const directFiles = Array.from(clipboard?.files || []) as File[];
+    const itemFiles = Array.from(clipboard?.items || [])
+      .filter((item: any) => item.kind === "file")
+      .map((item: any) => item.getAsFile())
+      .filter(Boolean) as File[];
+    const pastedFiles = directFiles.length ? directFiles : itemFiles;
+    if (!pastedFiles.length) return;
+
+    event.preventDefault();
+    void uploadFiles(pastedFiles);
+  };
+
+  const handleComposerDrop = (event: any) => {
+    if (closed) {
+      event.preventDefault();
+      return;
+    }
+    const droppedFiles = Array.from(event.dataTransfer?.files || []) as File[];
+    if (!droppedFiles.length) return;
+    event.preventDefault();
+    setIsDraggingFiles(false);
+    void uploadFiles(droppedFiles);
+  };
   const send = async () => {
-    if (!body.trim()) return;
+    if (closed) return toast.error("Ticket yopilgan. Xabar yuborish uchun avval qayta oching");
+    if (!body.trim() && !attachments.length) return;
     setLoading(true);
     try {
       const res = await fetch(`/api/crm/tickets/${ticket._id}/messages`, {
@@ -166,13 +307,13 @@ export default function CrmTicketDetail({
         body: JSON.stringify({
           type,
           body,
-          attachment: attachment || undefined,
+          attachments: attachments.length ? attachments : undefined,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setBody("");
-      setAttachment(null);
+      setAttachments([]);
       toast.success(
         type === "INTERNAL_NOTE"
           ? "Ichki izoh qo'shildi"
@@ -314,9 +455,16 @@ export default function CrmTicketDetail({
           </Button>
         )}
         {closed ? (
-          <span className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white">
-            <ShieldCheck className="h-3.5 w-3.5" /> Admin tasdiqladi
-          </span>
+          <>
+            <span className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white">
+              <ShieldCheck className="h-3.5 w-3.5" /> Admin tasdiqladi
+            </span>
+            {canReopen && (
+              <Button onClick={reopenTicket} disabled={loading} size="sm" variant="outline" className="h-9 rounded-lg text-xs">
+                <RotateCcw /> Qayta ochish
+              </Button>
+            )}
+          </>
         ) : approvalStatus === "PENDING" ? (
           canApprove ? (
             <Button onClick={() => setApprovalOpen(true)} disabled={loading} size="sm" className="h-9 rounded-lg bg-blue-600 text-xs text-white hover:bg-blue-700">
@@ -589,22 +737,58 @@ export default function CrmTicketDetail({
                           )}
                         </div>
                       )}
-                      {message.attachments?.map((a: any) => (
-                        <a
-                          key={a.url}
-                          href={a.url}
-                          target="_blank"
-                          className={cn(
-                            "mt-2 flex items-center gap-2 rounded-lg border p-2 text-xs hover:underline",
-                            isOperator
-                              ? "border-white/20 bg-white/10 text-white"
-                              : "bg-background/60 text-blue-600",
+                      {message.attachments?.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {message.attachments.map((attachment: CrmAttachment) =>
+                            isImageAttachment(attachment) ? (
+                              <a
+                                key={attachment.url}
+                                href={attachment.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={`${attachment.name} — ochish`}
+                                className={cn(
+                                  "group relative block overflow-hidden rounded-lg border transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue",
+                                  isOperator
+                                    ? "border-white/20 bg-white/10"
+                                    : "border-border bg-background/60",
+                                )}
+                              >
+                                <img
+                                  src={attachment.url}
+                                  alt={attachment.name}
+                                  loading="lazy"
+                                  className="h-28 w-36 object-cover sm:h-32 sm:w-44"
+                                />
+                                <span
+                                  className={cn(
+                                    "absolute inset-x-0 bottom-0 truncate px-2 py-1 text-[10px] font-semibold backdrop-blur-sm",
+                                    isOperator ? "bg-slate-950/60 text-white" : "bg-background/85 text-foreground",
+                                  )}
+                                >
+                                  {attachment.name}
+                                </span>
+                              </a>
+                            ) : (
+                              <a
+                                key={attachment.url}
+                                href={attachment.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={cn(
+                                  "flex max-w-full items-center gap-2 rounded-lg border p-2 text-xs hover:underline",
+                                  isOperator
+                                    ? "border-white/20 bg-white/10 text-white"
+                                    : "bg-background/60 text-blue-600",
+                                )}
+                              >
+                                <FileText className="h-4 w-4 shrink-0" />
+                                <span className="truncate">{attachment.name}</span>
+                              </a>
+                            ),
                           )}
-                        >
-                          <FileText className="h-4 w-4" />
-                          {a.name}
-                        </a>
-                      ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -650,47 +834,122 @@ export default function CrmTicketDetail({
                   Qo‘ng‘iroqdagi mijoz xabarini qayd etish
                 </button>}
               </div>
-              <Textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder={
-                  type === "INTERNAL_NOTE"
-                    ? "Faqat jamoa ko'radigan izoh..."
-                    : type === "CUSTOMER_MESSAGE"
-                      ? "Mijoz qo‘ng‘iroqda aytgan xabarni kiriting..."
-                      : "Mijozga javob yoki yangilanish yozing..."
-                }
-                className="min-h-16 resize-none rounded-lg text-xs leading-5"
-              />
-              {attachment && (
-                <div className="mt-2 flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-xs">
-                  <span className="truncate">{attachment.name}</span>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    onClick={() => setAttachment(null)}
-                  >
-                    <X />
-                  </Button>
+              <div
+                className={cn(
+                  "relative rounded-xl transition",
+                  isDraggingFiles && "bg-brand-blue/5 ring-2 ring-brand-blue/50 ring-offset-2",
+                )}
+                onDragEnter={(event: any) => {
+                  if (closed) return;
+                  if (!Array.from(event.dataTransfer?.types || []).includes("Files")) return;
+                  event.preventDefault();
+                  setIsDraggingFiles(true);
+                }}
+                onDragOver={(event: any) => {
+                  if (closed) return;
+                  if (!Array.from(event.dataTransfer?.types || []).includes("Files")) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                  setIsDraggingFiles(true);
+                }}
+                onDragLeave={(event: any) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                    setIsDraggingFiles(false);
+                  }
+                }}
+                onDrop={handleComposerDrop}
+              >
+                <Textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  onPaste={handleComposerPaste}
+                  disabled={closed}
+                  placeholder={
+                    closed
+                      ? "Ticket yopilgan. Davom etish uchun qayta oching."
+                      : type === "INTERNAL_NOTE"
+                      ? "Faqat jamoa ko'radigan izoh..."
+                      : type === "CUSTOMER_MESSAGE"
+                        ? "Mijoz qo‘ng‘iroqda aytgan xabarni kiriting..."
+                        : "Mijozga javob yoki yangilanish yozing..."
+                  }
+                  className="min-h-16 resize-none rounded-lg text-xs leading-5"
+                />
+                {isDraggingFiles && (
+                  <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-brand-blue bg-background/85 px-4 text-center text-xs font-bold text-brand-blue backdrop-blur-[1px]">
+                    Fayl yoki rasmni shu yerga tashlang
+                  </div>
+                )}
+              </div>
+
+              {attachments.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2" aria-label="Biriktirilgan fayllar">
+                  {attachments.map((attachment, index) => (
+                    <div
+                      key={`${attachment.url}-${index}`}
+                      className="flex max-w-full items-center gap-2 rounded-lg border bg-muted/50 p-1.5 pr-1 text-xs shadow-sm"
+                    >
+                      {isImageAttachment(attachment) ? (
+                        <a
+                          href={attachment.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0 overflow-hidden rounded-md border bg-background"
+                          title={`${attachment.name} — ochish`}
+                        >
+                          <img
+                            src={attachment.url}
+                            alt={attachment.name}
+                            className="h-10 w-10 object-cover"
+                          />
+                        </a>
+                      ) : (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background text-blue-600">
+                          <FileText className="h-4 w-4" />
+                        </div>
+                      )}
+                      <div className="min-w-0 pr-1">
+                        <p className="max-w-40 truncate font-semibold" title={attachment.name}>{attachment.name}</p>
+                        {attachment.size ? <p className="text-[10px] text-muted-foreground">{formatAttachmentSize(attachment.size)}</p> : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                        aria-label={`${attachment.name} faylini olib tashlash`}
+                        title="Olib tashlash"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
-              <div className="mt-2 flex justify-between">
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted">
-                  <Paperclip className="h-3.5 w-3.5" />
-                  {uploading ? "Yuklanmoqda" : "Fayl"}
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*,.pdf,.doc,.docx,.txt"
-                    disabled={uploading}
-                    onChange={(e) => upload(e.target.files?.[0])}
-                  />
-                </label>
+
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted">
+                    <Paperclip className="h-3.5 w-3.5" />
+                    {uploading ? "Yuklanmoqda" : "Fayl qo‘shish"}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      multiple
+                      accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xls,.xlsx,.zip,.mp3,.ogg"
+                      disabled={uploading || closed}
+                      onChange={(event) => void uploadFiles(Array.from(event.target.files || []))}
+                    />
+                  </label>
+                  <p className="mt-0.5 truncate px-2 text-[10px] text-muted-foreground">
+                    Sudrab tashlang yoki Ctrl+V bosing · 5 MB · {attachments.length}/{MAX_ATTACHMENT_COUNT}
+                  </p>
+                </div>
                 <Button
                   onClick={send}
-                  disabled={loading || uploading || !body.trim()}
+                  disabled={closed || loading || uploading || (!body.trim() && !attachments.length)}
                   size="sm"
-                  className="h-8 rounded-lg bg-brand-blue px-3 text-xs text-white hover:bg-brand-blue-hover"
+                  className="h-8 shrink-0 rounded-lg bg-brand-blue px-3 text-xs text-white hover:bg-brand-blue-hover"
                 >
                   {loading ? <Loader2 className="animate-spin" /> : <Send />}
                   Qo‘shish
@@ -738,12 +997,27 @@ export default function CrmTicketDetail({
                 value={formatUzPhone(ticket.callerPhone)}
                 copyValue={ticket.callerPhone}
               />
-              <Info
-                icon={ShoppingBag}
-                label="Order"
-                value={ticket.orderId || "Ko'rsatilmagan"}
-                copyValue={ticket.orderId}
-              />
+              {ticket.orderIssues?.length ? (
+                <div className="space-y-1.5">
+                  <p className="text-[9px] font-bold uppercase text-muted-foreground">DG buyurtmalar</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ticket.orderIssues.map((issue: any, index: number) => (
+                      <DgCopyChip
+                        key={`${issue.orderId}-${index}`}
+                        orderId={issue.orderId}
+                        category={issue.category}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <Info
+                  icon={ShoppingBag}
+                  label="Order"
+                  value={ticket.orderId || "Ko'rsatilmagan"}
+                  copyValue={ticket.orderId}
+                />
+              )}
               {ticket.category === "REPLACEMENT" && (
                 <div className="space-y-3 rounded-lg border border-blue-100 bg-blue-50/50 p-2.5 dark:border-blue-900/50 dark:bg-blue-950/20">
                   <Info
@@ -770,7 +1044,7 @@ export default function CrmTicketDetail({
                     onValueChange={(v) =>
                       v && patch({ status: v }, "Status yangilandi")
                     }
-                    disabled={loading || !canWriteCustomerReply}
+                    disabled={closed || loading || !canWriteCustomerReply}
                   >
                     <SelectTrigger className="h-8 rounded-md text-[11px]">
                       <SelectValue>
@@ -799,7 +1073,7 @@ export default function CrmTicketDetail({
                     onValueChange={(v) =>
                       v && patch({ priority: v }, "Muhimlik yangilandi")
                     }
-                    disabled={loading || !canWriteCustomerReply}
+                    disabled={closed || loading || !canWriteCustomerReply}
                   >
                     <SelectTrigger className="h-8 rounded-md text-[11px]">
                       <SelectValue>
@@ -829,7 +1103,7 @@ export default function CrmTicketDetail({
                         "Operator yangilandi",
                       )
                     }
-                    disabled={loading}
+                    disabled={closed || loading}
                   >
                     <SelectTrigger className="h-8 rounded-md text-[11px]">
                       <SelectValue>
@@ -847,7 +1121,7 @@ export default function CrmTicketDetail({
                   </Select>
                 </div>
               ) : (
-                !ticket.assignedTo && (
+                !closed && !ticket.assignedTo && (
                   <Button
                     className="w-full rounded-xl"
                     onClick={() =>
@@ -861,6 +1135,18 @@ export default function CrmTicketDetail({
                   </Button>
                 )
               )}
+              {ticket.collaborators?.length ? (
+                <div>
+                  <p className="mb-1 text-[10px] font-bold uppercase text-muted-foreground">Jalb qilinganlar</p>
+                  <div className="flex flex-wrap gap-1">
+                    {ticket.collaborators.map((collaborator: any) => (
+                      <span key={collaborator._id || collaborator} className="rounded-md border bg-muted/30 px-1.5 py-1 text-[10px] font-semibold">
+                        {collaborator.name || "Operator"}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div
                 className={cn(
                   "rounded-lg border p-2.5",
@@ -961,13 +1247,41 @@ export default function CrmTicketDetail({
   );
 }
 
+function DgCopyChip({ orderId, category }: { orderId: string; category?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (!(await copyText(String(orderId || "")))) {
+      toast.error("DG nusxalab bo‘lmadi");
+      return;
+    }
+    setCopied(true);
+    toast.success("DG nusxalandi");
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title={`${orderId} ni nusxalash`}
+      className="inline-flex max-w-full items-center gap-1 rounded-md border bg-muted/35 px-2 py-1 text-left transition hover:border-brand-blue/50 hover:bg-brand-blue/5"
+    >
+      {copied ? <Check className="size-3 shrink-0 text-emerald-600" /> : <Copy className="size-3 shrink-0 text-muted-foreground" />}
+      <span className="truncate text-[11px] font-semibold">{orderId}</span>
+      {category ? <span className="truncate text-[9px] text-muted-foreground">· {CRM_CATEGORY_LABELS[category] || category}</span> : null}
+    </button>
+  );
+}
+
 function Info({ icon: Icon, label, value, copyValue, children }: any) {
+  const [copied, setCopied] = useState(false);
   const copy = async () => {
     if (!copyValue) return;
-    try {
-      await navigator.clipboard.writeText(String(copyValue));
+    if (await copyText(String(copyValue))) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
       toast.success(`${label} nusxalandi`);
-    } catch {
+    } else {
       toast.error("Nusxalab bo'lmadi");
     }
   };
@@ -984,8 +1298,11 @@ function Info({ icon: Icon, label, value, copyValue, children }: any) {
           <button
             type="button"
             onClick={copy}
-            className="truncate text-xs font-semibold hover:text-blue-600 hover:underline cursor-pointer text-left block w-full"
-            title={`${label}ni nusxalash (Bosish orqali)`}
+            className={cn(
+              "block w-full cursor-pointer truncate text-left text-xs font-semibold hover:text-blue-600 hover:underline",
+              copied && "text-emerald-600 dark:text-emerald-400",
+            )}
+            title={copied ? "Nusxalandi" : `${label}ni nusxalash (Bosish orqali)`}
           >
             {value}
           </button>
@@ -995,8 +1312,8 @@ function Info({ icon: Icon, label, value, copyValue, children }: any) {
         {children && <div className="mt-1">{children}</div>}
       </div>
       {copyValue ? (
-        <button type="button" onClick={copy} title={`${label}ni nusxalash`} aria-label={`${label}ni nusxalash`} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-60 transition hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:opacity-100 mt-0.5">
-          <Copy className="h-3.5 w-3.5" />
+        <button type="button" onClick={copy} title={copied ? "Nusxalandi" : `${label}ni nusxalash`} aria-label={copied ? `${label} nusxalandi` : `${label}ni nusxalash`} className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-60 transition hover:bg-muted hover:text-foreground hover:opacity-100 focus-visible:opacity-100", copied && "text-emerald-600 opacity-100 dark:text-emerald-400")}>
+          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
         </button>
       ) : null}
     </div>

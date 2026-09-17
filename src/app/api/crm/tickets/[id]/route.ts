@@ -8,7 +8,7 @@ import { TicketMessage } from "@/models/TicketMessage";
 import { TicketTask } from "@/models/TicketTask";
 import { User } from "@/models/User";
 import { CRM_PRIORITIES, CRM_STATUSES, CRM_STATUS_LABELS, CRM_PRIORITY_LABELS } from "@/lib/crm";
-import { canAccessTicket, canUseCrm } from "@/lib/support/access";
+import { canAccessTicket, canUseCrm, escapeRegex, ticketScope } from "@/lib/support/access";
 import { canApproveTicketResolution, canReassignTickets, canMutateCrm } from "@/lib/support/permissions";
 import { notifyTicketAssigned } from "@/lib/support/notifications";
 import { createCrmNotification } from "@/lib/crmNotifications";
@@ -35,6 +35,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const ticket = await Ticket.findById(id)
     .populate("assignedTo", "name email image")
+    .populate("collaborators", "name email image")
     .populate("createdBy", "name email")
     .lean();
 
@@ -44,6 +45,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   if (!canAccessTicket(user, ticket)) {
     return NextResponse.json({ error: "Ruxsat yo'q" }, { status: 403 });
   }
+
+  const ticketDgs = [
+    ...((ticket as any).orderIssues || []).map((issue: any) => String(issue?.orderId || "").trim()).filter(Boolean),
+    ...String((ticket as any).orderId || "").split(/[,;\n]/).map((value) => value.trim()).filter(Boolean),
+  ];
+  const relatedDgConditions = ticketDgs.flatMap((dg) => {
+    const pattern = [...dg.replace(/\s+/g, "")].map(escapeRegex).join("\\s*");
+    return [
+      { "orderIssues.orderId": new RegExp(`^\\s*${pattern}\\s*$`, "i") },
+      { orderId: new RegExp(`(?:^|[,;])\\s*${pattern}\\s*(?=$|[,;])`, "i") },
+    ];
+  });
+  const previousTicketOr: any[] = [];
+  if ((ticket as any).callerPhone) previousTicketOr.push({ callerPhone: (ticket as any).callerPhone });
+  if (relatedDgConditions.length) previousTicketOr.push({ $or: relatedDgConditions });
+  const previousTicketMatch = previousTicketOr.length ? { $or: previousTicketOr } : { _id: null };
 
   const [messages, tasks, previousTickets] = await Promise.all([
     TicketMessage.find({ ticketId: id })
@@ -56,11 +73,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       .populate("reviewedBy", "name")
       .sort({ deadlineAt: 1, createdAt: 1 })
       .lean(),
-    Ticket.find({
-      _id: { $ne: id },
-      callerPhone: (ticket as any).callerPhone,
-    })
-      .select("ticketNumber problem status priority createdAt")
+    Ticket.find({ $and: [ticketScope(user), { _id: { $ne: id } }, previousTicketMatch] })
+      .select("ticketNumber problem status priority createdAt orderId orderIssues")
       .sort({ createdAt: -1 })
       .limit(5)
       .lean(),
@@ -95,6 +109,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const changes: string[] = [];
   const data = parsed.data;
+  if (["RESOLVED", "CLOSED"].includes(ticket.status)) {
+    return NextResponse.json(
+      { error: "Yopilgan ticketni o'zgartirishdan oldin uni maxsus qayta ochish oqimi orqali oching" },
+      { status: 409 },
+    );
+  }
   const update: any = { lastInteractionAt: new Date() };
   const assignedOperatorId = ticket.assignedTo?.toString();
   const isCollaboratorOnly =
@@ -154,11 +174,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       const assignedTo = data.assignedTo;
       after(async () => {
         await Promise.allSettled([
-          notifyTicketAssigned(assignedTo, ticket.problem, ticket.deadlineAt || new Date()),
+          notifyTicketAssigned(assignedTo, ticket.problem, ticket.deadlineAt || new Date(), {
+            ticketId: ticket._id.toString(),
+            ticketNumber: ticket.ticketNumber,
+            link: `/crm/tickets/${ticket._id}`,
+          }),
           createCrmNotification({
             userId: assignedTo,
             ticketId: ticket._id.toString(),
-            taskId: ticket._id.toString(),
             kind: "TICKET_ASSIGNED",
             title: "Sizga ticket biriktirildi",
             body: `${ticket.ticketNumber}: ${ticket.callerName || "Mijoz"} — ${ticket.problem.slice(0, 100)}`,

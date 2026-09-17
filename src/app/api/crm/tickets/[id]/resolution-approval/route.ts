@@ -9,6 +9,7 @@ import { User } from "@/models/User";
 import { canAccessTicket } from "@/lib/support/access";
 import { canApproveTicketResolution } from "@/lib/support/permissions";
 import { createCrmNotification } from "@/lib/crmNotifications";
+import { notifyTicketViaTelegram } from "@/lib/support/notifications";
 
 const schema = z.discriminatedUnion("action", [
   z.object({
@@ -25,6 +26,13 @@ const schema = z.discriminatedUnion("action", [
     comment: z.string().trim().min(3, "Qaytarish sababini yozing").max(2000),
   }),
 ]);
+
+function ticketTeamIds(ticket: any) {
+  return [ticket.assignedTo, ...(ticket.collaborators || [])]
+    .map((member) => (member?._id || member)?.toString())
+    .filter((id): id is string => Boolean(id))
+    .filter((id, index, ids) => ids.indexOf(id) === index);
+}
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser(req);
@@ -86,14 +94,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const assignedId = ticket.assignedTo?.toString();
     if (assignedId && assignedId !== user.id) {
-      await createCrmNotification({
-        userId: assignedId,
-        ticketId: ticket._id.toString(),
-        kind: "TICKET_APPROVED",
-        title: "Ticket super admin tomonidan hal qilindi",
-        body: `${ticket.ticketNumber}: yakuniy qaror tasdiqlandi`,
-        link: `/crm/tickets/${ticket._id}`,
-      });
+      const title = "Ticket super admin tomonidan hal qilindi";
+      const body = `${ticket.ticketNumber}: yakuniy qaror tasdiqlandi`;
+      await Promise.allSettled([
+        createCrmNotification({
+          userId: assignedId,
+          ticketId: ticket._id.toString(),
+          kind: "TICKET_APPROVED",
+          title,
+          body,
+          link: `/crm/tickets/${ticket._id}`,
+        }),
+        notifyTicketViaTelegram({
+          userId: assignedId,
+          title,
+          body,
+          icon: "✅",
+          context: { ticketId: ticket._id.toString(), ticketNumber: ticket.ticketNumber },
+        }),
+      ]);
     }
   }
 
@@ -102,7 +121,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "Faqat biriktirilgan operator adminga yubora oladi" }, { status: 403 });
     }
     const assignedId = ticket.assignedTo?.toString();
-    if (!assignedId || assignedId !== user.id) {
+    const collaboratorIds = ticketTeamIds(ticket);
+    // Primary operator bilan birga create vaqtida tanlangan hamkor operatorlar
+    // ham yakuniy SMSni yuborishi mumkin. Tasodifiy SUPPORT esa hali ham yubora olmaydi.
+    if ((!assignedId || assignedId !== user.id) && !collaboratorIds.includes(user.id)) {
       return NextResponse.json({ error: "Ticket sizga biriktirilmagan" }, { status: 403 });
     }
     if (["RESOLVED", "CLOSED"].includes(ticket.status)) {
@@ -144,14 +166,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const admins = await User.find({
       $or: [{ role: { $in: ["SUPER_ADMIN", "ADMIN"] } }, { isLead: true }],
     }).select("_id").lean();
-    await Promise.allSettled(admins.map((admin: any) => createCrmNotification({
-      userId: admin._id.toString(),
-      ticketId: ticket._id.toString(),
-      kind: "TICKET_APPROVAL_REQUESTED",
-      title: "Ticket tasdiq kutmoqda",
-      body: `${ticket.ticketNumber}: ${user.name || "Operator"} yakuniy qaror uchun yubordi`,
-      link: `/crm/tickets/${ticket._id}`,
-    })));
+    const title = "Ticket tasdiq kutmoqda";
+    const body = `${ticket.ticketNumber}: ${user.name || "Operator"} yakuniy qaror uchun yubordi`;
+    await Promise.allSettled(admins.flatMap((admin: any) => {
+      const recipientId = admin._id.toString();
+      return [
+        createCrmNotification({
+          userId: recipientId,
+          ticketId: ticket._id.toString(),
+          kind: "TICKET_APPROVAL_REQUESTED",
+          title,
+          body,
+          link: `/crm/tickets/${ticket._id}`,
+        }),
+        notifyTicketViaTelegram({
+          userId: recipientId,
+          title,
+          body,
+          icon: "📨",
+          context: { ticketId: ticket._id.toString(), ticketNumber: ticket.ticketNumber },
+        }),
+      ];
+    }));
   }
 
   if (action === "APPROVE") {
@@ -178,14 +214,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       authorName: user.name,
     });
     if (ticket.resolutionSubmittedBy) {
-      await createCrmNotification({
-        userId: ticket.resolutionSubmittedBy.toString(),
-        ticketId: ticket._id.toString(),
-        kind: "TICKET_APPROVED",
-        title: "Ticket tasdiqlandi",
-        body: `${ticket.ticketNumber}: admin yakuniy qarorni tasdiqladi`,
-        link: `/crm/tickets/${ticket._id}`,
-      });
+      const recipientId = ticket.resolutionSubmittedBy.toString();
+      const title = "Ticket tasdiqlandi";
+      const body = `${ticket.ticketNumber}: admin yakuniy qarorni tasdiqladi`;
+      await Promise.allSettled([
+        createCrmNotification({
+          userId: recipientId,
+          ticketId: ticket._id.toString(),
+          kind: "TICKET_APPROVED",
+          title,
+          body,
+          link: `/crm/tickets/${ticket._id}`,
+        }),
+        notifyTicketViaTelegram({
+          userId: recipientId,
+          title,
+          body,
+          icon: "✅",
+          context: { ticketId: ticket._id.toString(), ticketNumber: ticket.ticketNumber },
+        }),
+      ]);
     }
   }
 
@@ -202,6 +250,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ticket.status = "IN_PROGRESS";
     ticket.resolvedAt = undefined;
     ticket.lastInteractionAt = reviewedAt;
+    // PENDING holatda sweep ataylab eslatma yubormaydi. Qaytarilganda esa
+    // avvalgi WARNING/OVERDUE holati keyingi sweepni bloklamasligi kerak.
+    ticket.lastReminderLevel = "NONE";
+    ticket.lastReminderAt = undefined;
     await ticket.save();
 
     await TicketMessage.create({
@@ -212,14 +264,32 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       authorName: user.name,
     });
     if (ticket.resolutionSubmittedBy) {
-      await createCrmNotification({
-        userId: ticket.resolutionSubmittedBy.toString(),
-        ticketId: ticket._id.toString(),
-        kind: "TICKET_RETURNED",
-        title: "Ticket qaytarildi",
-        body: `${ticket.ticketNumber}: ${parsed.data.comment}`,
-        link: `/crm/tickets/${ticket._id}`,
-      });
+      // Qaytarilganini yuborgan operator albatta, primary/hamkorlar esa faqat
+      // bitta umumiy alert oladi. Shu bilan qayta ishga kirishadigan jamoa
+      // xabardor bo'ladi, approverning o'ziga esa echo ketmaydi.
+      const recipientIds = [...new Set([
+        ticket.resolutionSubmittedBy.toString(),
+        ...ticketTeamIds(ticket),
+      ])].filter((recipientId) => recipientId !== user.id);
+      const title = "Ticket qaytarildi";
+      const body = `${ticket.ticketNumber}: ${parsed.data.comment}`;
+      await Promise.allSettled(recipientIds.flatMap((recipientId) => [
+        createCrmNotification({
+          userId: recipientId,
+          ticketId: ticket._id.toString(),
+          kind: "TICKET_RETURNED",
+          title,
+          body,
+          link: `/crm/tickets/${ticket._id}`,
+        }),
+        notifyTicketViaTelegram({
+          userId: recipientId,
+          title,
+          body,
+          icon: "↩️",
+          context: { ticketId: ticket._id.toString(), ticketNumber: ticket.ticketNumber },
+        }),
+      ]));
     }
   }
 

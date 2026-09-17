@@ -4,8 +4,12 @@ import { z } from "zod";
 import dbConnect from "@/lib/mongodb";
 import { getAuthUser } from "@/lib/auth-helper";
 import { createCrmNotification } from "@/lib/crmNotifications";
+import {
+  notifyTicketConsultationAnswered,
+  notifyTicketConsultationRequested,
+} from "@/lib/support/notifications";
 import { canAccessTicket } from "@/lib/support/access";
-import { canSeeAllTickets } from "@/lib/support/permissions";
+import { canMutateCrm, canSeeAllTickets } from "@/lib/support/permissions";
 import { Ticket } from "@/models/Ticket";
 import { TicketMessage } from "@/models/TicketMessage";
 import { User } from "@/models/User";
@@ -26,6 +30,7 @@ const schema = z.discriminatedUnion("action", [
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getAuthUser(req);
   if (!user) return NextResponse.json({ error: "Sessiya yaroqsiz" }, { status: 401 });
+  if (!canMutateCrm(user)) return NextResponse.json({ error: "Rahbar maslahat yozolmaydi (faqat kuzatish)" }, { status: 403 });
 
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) {
@@ -37,11 +42,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const ticket = await Ticket.findById(id);
   if (!ticket) return NextResponse.json({ error: "Ticket topilmadi" }, { status: 404 });
   if (!canAccessTicket(user, ticket)) return NextResponse.json({ error: "Ruxsat yo'q" }, { status: 403 });
+  if (["RESOLVED", "CLOSED"].includes(ticket.status)) {
+    return NextResponse.json({ error: "Ticket yopilgan. Maslahat uchun avval qayta oching" }, { status: 409 });
+  }
 
   if (parsed.data.action === "REQUEST") {
     const assignedId = ticket.assignedTo?.toString();
-    if (assignedId !== user.id && !canSeeAllTickets(user)) {
-      return NextResponse.json({ error: "Maslahatni faqat mas'ul operator so'rashi mumkin" }, { status: 403 });
+    const isCollaborator = (ticket.collaborators || []).some(
+      (collaborator: unknown) => String((collaborator as { _id?: unknown })._id || collaborator) === user.id,
+    );
+    if (assignedId !== user.id && !isCollaborator && !canSeeAllTickets(user)) {
+      return NextResponse.json({ error: "Maslahatni faqat biriktirilgan operator so'rashi mumkin" }, { status: 403 });
     }
     if (!isValidObjectId(parsed.data.operatorId) || parsed.data.operatorId === user.id) {
       return NextResponse.json({ error: "Boshqa operatorni tanlang" }, { status: 400 });
@@ -68,15 +79,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       { _id: id },
       { $addToSet: { collaborators: { $each: [user.id, parsed.data.operatorId] } }, $set: { lastInteractionAt: new Date() } },
     );
-    await createCrmNotification({
-      userId: parsed.data.operatorId,
-      ticketId: id,
-      kind: "CONSULTATION_REQUESTED",
-      title: `${user.name} maslahat so‘radi`,
-      body: `${ticket.ticketNumber}: ${parsed.data.question.slice(0, 120)}`,
-      link: `/crm/tickets/${id}`,
-      metadata: { requestId: message._id.toString() },
-    });
+    const title = `${user.name || "Operator"} maslahat so‘radi`;
+    const body = `${ticket.ticketNumber}: ${parsed.data.question.slice(0, 120)}`;
+    // DB yozilganidan keyin notification xatosi maslahat so'rovini bekor
+    // qilmasin; in-app/FCM va Telegram mustaqil kanal sifatida yuboriladi.
+    await Promise.allSettled([
+      createCrmNotification({
+        userId: parsed.data.operatorId,
+        ticketId: id,
+        kind: "CONSULTATION_REQUESTED",
+        title,
+        body,
+        link: `/crm/tickets/${id}`,
+        metadata: { requestId: message._id.toString() },
+      }),
+      notifyTicketConsultationRequested(
+        parsed.data.operatorId,
+        user.name,
+        parsed.data.question,
+        { ticketId: id, ticketNumber: ticket.ticketNumber },
+      ),
+    ]);
     return NextResponse.json(message, { status: 201 });
   }
 
@@ -107,14 +130,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   requestMessage.markModified("metadata");
   await requestMessage.save();
   await Ticket.updateOne({ _id: id }, { $set: { lastInteractionAt: new Date() } });
-  await createCrmNotification({
-    userId: String(requestMessage.metadata.requestedBy),
-    ticketId: id,
-    kind: "CONSULTATION_ANSWERED",
-    title: `${user.name} maslahat so‘rovingizga javob berdi`,
-    body: `${ticket.ticketNumber}: ${parsed.data.response.slice(0, 120)}`,
-    link: `/crm/tickets/${id}`,
-    metadata: { requestId: requestMessage._id.toString() },
-  });
+  const requesterId = String(requestMessage.metadata.requestedBy);
+  const title = `${user.name || "Operator"} maslahat so'rovingizga javob berdi`;
+  const body = `${ticket.ticketNumber}: ${parsed.data.response.slice(0, 120)}`;
+  await Promise.allSettled([
+    createCrmNotification({
+      userId: requesterId,
+      ticketId: id,
+      kind: "CONSULTATION_ANSWERED",
+      title,
+      body,
+      link: `/crm/tickets/${id}`,
+      metadata: { requestId: requestMessage._id.toString() },
+    }),
+    notifyTicketConsultationAnswered(
+      requesterId,
+      user.name,
+      parsed.data.response,
+      { ticketId: id, ticketNumber: ticket.ticketNumber },
+    ),
+  ]);
   return NextResponse.json(requestMessage);
 }

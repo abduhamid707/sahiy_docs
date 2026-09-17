@@ -2,6 +2,23 @@ import { Schema, model, models } from "mongoose";
 
 const AttachmentSchema = new Schema({ url: { type: String, required: true }, name: { type: String, required: true }, mimeType: String, size: Number }, { _id: false });
 
+// Bitta murojaat bir nechta DG bilan bog'lanishi mumkin. Eski orderId/category
+// maydonlari qidiruv va mavjud hisobotlar uchun saqlanadi, orderIssues esa har
+// bir DG ning o'z muammo turini yo'qotmasdan saqlaydi.
+const OrderIssueSchema = new Schema(
+  {
+    orderId: { type: String, required: true, trim: true },
+    category: {
+      type: String,
+      enum: ["DELIVERY", "DELIVERY_DELAY", "TRACKING", "NOT_RECEIVED", "WRONG_OR_MISSING", "REFUND_PAYMENT", "CARGO_PAYMENT", "REPLACEMENT", "CHINA_WAREHOUSE", "OTHER"],
+      required: true,
+    },
+    replacementOldValue: { type: String, trim: true },
+    replacementNewValue: { type: String, trim: true },
+  },
+  { _id: false },
+);
+
 const TicketSchema = new Schema(
   {
     ticketNumber: { type: String, index: true, unique: true, sparse: true },
@@ -10,6 +27,7 @@ const TicketSchema = new Schema(
     callerName: { type: String, trim: true },
     callerPhone: { type: String, trim: true, index: true },
     orderId: { type: String, trim: true, index: true },
+    orderIssues: { type: [OrderIssueSchema], default: [] },
     problem: { type: String, required: true, trim: true },
     notes: String,
     category: { type: String, enum: ["DELIVERY", "DELIVERY_DELAY", "TRACKING", "NOT_RECEIVED", "WRONG_OR_MISSING", "REFUND_PAYMENT", "CARGO_PAYMENT", "REPLACEMENT", "CHINA_WAREHOUSE", "OTHER"], default: "OTHER", index: true },
@@ -54,7 +72,9 @@ const TicketSchema = new Schema(
 
 TicketSchema.index({ assignedTo: 1, status: 1 });
 TicketSchema.index({ collaborators: 1, status: 1 });
+TicketSchema.index({ createdBy: 1, status: 1 });
 TicketSchema.index({ priority: 1, deadlineAt: 1 });
+TicketSchema.index({ "orderIssues.orderId": 1, status: 1 });
 TicketSchema.index({ callerId: "text", callerName: "text", callerPhone: "text", orderId: "text", ticketNumber: "text", problem: "text" });
 
 export const Ticket = models.Ticket || model("Ticket", TicketSchema);

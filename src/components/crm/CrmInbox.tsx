@@ -78,10 +78,12 @@ const priorityStyle: Record<string, string> = {
 function CreateTicketControl({
   agents,
   canAssign,
+  currentUserId,
   onSuccess,
 }: {
   agents: any[];
   canAssign: boolean;
+  currentUserId: string;
   onSuccess: (newTicket: any) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -100,6 +102,7 @@ function CreateTicketControl({
         onClose={() => setIsOpen(false)}
         agents={agents}
         canAssign={canAssign}
+        currentUserId={currentUserId}
         onSuccess={onSuccess}
       />
     </>
@@ -321,9 +324,10 @@ export default function CrmInbox({
           >
             Analytics
           </Button>
-          <CreateTicketControl
-            agents={agents}
-            canAssign={canAssign}
+            <CreateTicketControl
+              agents={agents}
+              canAssign={canAssign}
+              currentUserId={currentUserId}
             onSuccess={(newTicket) => {
               setTickets((prev) => [newTicket, ...prev]);
             }}

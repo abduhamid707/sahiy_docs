@@ -9,9 +9,23 @@ import { canAccessTicket } from "@/lib/support/access";
 import { canMutateCrm, canSeeAllTickets } from "@/lib/support/permissions";
 import { getAuthUser } from "@/lib/auth-helper";
 
+const attachmentSchema = z.object({
+  url: z.string().min(1),
+  name: z.string().min(1),
+  mimeType: z.string().optional(),
+  size: z.number().max(5 * 1024 * 1024).optional(),
+});
+
 const schema = z.object({
-  type: z.enum(CRM_MESSAGE_TYPES), body: z.string().trim().min(1).max(10000),
-  attachment: z.object({ url: z.string().min(1), name: z.string().min(1), mimeType: z.string().optional(), size: z.number().optional() }).optional(),
+  type: z.enum(CRM_MESSAGE_TYPES),
+  // Matnsiz screenshot/fayl yuborish ham ticket tarixida foydali bo'ladi.
+  body: z.string().trim().max(10000).optional().default(""),
+  attachment: attachmentSchema.optional(), // eski clientlar uchun
+  attachments: z.array(attachmentSchema).max(10, "Ko'pi bilan 10 ta fayl biriktirish mumkin").optional(),
+}).superRefine((data, ctx) => {
+  if (!data.body && !data.attachment && !data.attachments?.length) {
+    ctx.addIssue({ code: "custom", message: "Xabar yoki kamida bitta fayl yuboring", path: ["body"] });
+  }
 });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -24,11 +38,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const ticket = await Ticket.findById(id);
   if (!ticket) return NextResponse.json({ error: "Ticket topilmadi" }, { status: 404 });
   if (!canAccessTicket(user, ticket)) return NextResponse.json({ error: "Ruxsat yo'q" }, { status: 403 });
+  if (["RESOLVED", "CLOSED"].includes(ticket.status)) {
+    return NextResponse.json({ error: "Ticket yopilgan. Xabar yuborish uchun avval qayta oching" }, { status: 409 });
+  }
   const assignedId = ticket.assignedTo?.toString();
-  if (parsed.data.type !== "INTERNAL_NOTE" && assignedId !== user.id && !canSeeAllTickets(user)) {
+  const isCollaborator = (ticket.collaborators || []).some((collaborator: any) => collaborator?.toString() === user.id);
+  if (parsed.data.type !== "INTERNAL_NOTE" && assignedId !== user.id && !isCollaborator && !canSeeAllTickets(user)) {
     return NextResponse.json({ error: "Mijoz bilan faqat mas'ul operator ishlaydi" }, { status: 403 });
   }
-  const message = await TicketMessage.create({ ticketId: id, type: parsed.data.type, body: parsed.data.body, author: user.id, authorName: user.name, channel: "MANUAL", attachments: parsed.data.attachment ? [parsed.data.attachment] : [] });
+  const attachments = parsed.data.attachments || (parsed.data.attachment ? [parsed.data.attachment] : []);
+  const message = await TicketMessage.create({ ticketId: id, type: parsed.data.type, body: parsed.data.body || (attachments.length ? "Fayl biriktirildi" : ""), author: user.id, authorName: user.name, channel: "MANUAL", attachments });
   const update: any = { lastInteractionAt: new Date() };
   if (parsed.data.type === "OPERATOR_RESPONSE" && !ticket.firstResponseAt) update.firstResponseAt = new Date();
   const autoStarted = (ticket.status === "NEW" || ticket.status === "OPEN") && parsed.data.type === "OPERATOR_RESPONSE";

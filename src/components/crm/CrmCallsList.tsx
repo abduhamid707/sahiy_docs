@@ -421,6 +421,7 @@ export default function CrmCallsList({ initialCalls, agents, currentUserId, init
         onClose={() => setTicketModalOpen(false)}
         agents={agents}
         canAssign={true}
+        currentUserId={currentUserId}
         linkedCallId={selectedCallId || undefined}
         prefillPhone={prefillPhone}
         onSuccess={() => {
