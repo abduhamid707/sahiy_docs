@@ -30,7 +30,10 @@ const orderIssueSchema = z.object({
 
 const consultationSchema = z.object({
   operatorId: z.string().trim().min(1),
-  question: z.string().trim().min(3, "Maslahat savolini yozing").max(5000),
+  // Creation formida maslahat beruvchini tanlashning o'zi kifoya. Yangi
+  // clientlar savol yubormasa ticket izohi maslahat matni sifatida ishlaydi;
+  // eski clientlarning alohida savoli esa o'z holicha saqlanadi.
+  question: z.string().trim().max(5000).optional().default(""),
 });
 
 const createSchema = z.object({
@@ -97,10 +100,14 @@ function normalizeOrderIssues(data: any) {
     const key = orderIdKey(orderId);
     if (!orderId || !key || seen.has(key)) return;
     seen.add(key);
+    const category = issue?.category || fallbackCategory || "OTHER";
     issues.push({
       orderId,
-      category: issue?.category || fallbackCategory || "OTHER",
-      replacementOldValue: issue?.replacementOldValue?.trim() || undefined,
+      category,
+      // Replacement ticketning asosiy DGsi o'zi qaytayotgan (eski) DG.
+      // UI uni qayta so'ramaydi va eski clientdan kelgan noto'g'ri qiymat
+      // ham ticketdagi DG bilan almashtiriladi.
+      replacementOldValue: category === "REPLACEMENT" ? orderId : issue?.replacementOldValue?.trim() || undefined,
       replacementNewValue: issue?.replacementNewValue?.trim() || undefined,
     });
   };
@@ -257,7 +264,11 @@ export async function POST(req: Request) {
   const consultations = (data.consultations || []).reduce((items: any[], consultation: any) => {
     const operatorId = consultation.operatorId.trim();
     if (!operatorId || operatorId === user.id || items.some((item) => item.operatorId === operatorId)) return items;
-    items.push({ operatorId, question: consultation.question.trim() });
+    // Maslahat oluvchiga qo'shimcha xabar yozdirilmaydi: ticketning muammo
+    // izohi yetarli. Eski client alohida question yuborsa, aynan o'shani
+    // ko'rsatishda davom etamiz.
+    const question = consultation.question?.trim() || data.description.trim();
+    items.push({ operatorId, question });
     return items;
   }, []);
   const consultationOperatorIds = consultations.map((consultation) => consultation.operatorId);

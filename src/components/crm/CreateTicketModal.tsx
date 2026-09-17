@@ -18,8 +18,6 @@ import {
   Plus,
   Check,
   History,
-  MessageSquareText,
-  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -80,12 +78,10 @@ export default function CreateTicketModal({
     customerId: "",
     customerName: "",
     phone: "",
-    orderIssues: [{ orderId: "", category: "DELIVERY_DELAY", replacementOldValue: "", replacementNewValue: "" }],
+    orderIssues: [{ orderId: "", category: "DELIVERY_DELAY", replacementNewValue: "" }],
     description: "",
     assignedTo: currentUserId,
-    collaboratorIds: [] as string[],
     consultationRecipientIds: [] as string[],
-    consultationQuestion: "",
     priority: "NORMAL",
     status: "NEW",
     deadlineHours: 24,
@@ -107,11 +103,6 @@ export default function CreateTicketModal({
   const orderIds = useMemo(
     () => form.orderIssues.map((item) => item.orderId.trim().toUpperCase()).filter(Boolean),
     [form.orderIssues],
-  );
-
-  const selectedParticipantIds = useMemo(
-    () => new Set([form.assignedTo, ...form.collaboratorIds].filter(Boolean)),
-    [form.assignedTo, form.collaboratorIds],
   );
 
   const formatDisplayDateTime = (isoOrLocalStr: string) => {
@@ -262,12 +253,10 @@ export default function CreateTicketModal({
         customerId: "",
         customerName: "",
         phone: prefillPhone || "",
-        orderIssues: [{ orderId: "", category: "DELIVERY_DELAY", replacementOldValue: "", replacementNewValue: "" }],
+        orderIssues: [{ orderId: "", category: "DELIVERY_DELAY", replacementNewValue: "" }],
         description: "",
         assignedTo: currentUserId,
-        collaboratorIds: [],
         consultationRecipientIds: [],
-        consultationQuestion: "",
         priority: "NORMAL",
         status: "NEW",
         deadlineHours: 24,
@@ -294,9 +283,7 @@ export default function CreateTicketModal({
       // `assignedTo` opens as the creator by design; that default alone must
       // not make an untouched modal show a destructive-close confirmation.
       (form.assignedTo && form.assignedTo !== currentUserId) ||
-      form.collaboratorIds.length ||
       form.consultationRecipientIds.length ||
-      form.consultationQuestion.trim() ||
       form.orderIssues.some((item) => item.category !== "DELIVERY_DELAY") ||
       form.priority !== "NORMAL" ||
       form.deadlineHours !== 24 ||
@@ -374,13 +361,13 @@ export default function CreateTicketModal({
     void uploadFiles(Array.from(e.target.files || []));
   };
 
-  const togglePerson = (key: "collaboratorIds" | "consultationRecipientIds", personId: string) => {
+  const toggleConsultationRecipient = (personId: string) => {
     if (!personId || personId === currentUserId) return;
     setForm((current) => ({
       ...current,
-      [key]: current[key].includes(personId)
-        ? current[key].filter((id) => id !== personId)
-        : [...current[key], personId],
+      consultationRecipientIds: current.consultationRecipientIds.includes(personId)
+        ? current.consultationRecipientIds.filter((id) => id !== personId)
+        : [...current.consultationRecipientIds, personId],
     }));
   };
 
@@ -463,16 +450,6 @@ export default function CreateTicketModal({
       setFormError(message);
       return toast.error(message);
     }
-    if (form.consultationRecipientIds.length && form.consultationQuestion.trim().length < 3) {
-      const message = "Maslahat so‘rovi uchun xabarni yozing";
-      setFormError(message);
-      return toast.error(message);
-    }
-    if (form.consultationQuestion.trim() && !form.consultationRecipientIds.length) {
-      const message = "Maslahat so‘rovi uchun kamida bitta odamni belgilang";
-      setFormError(message);
-      return toast.error(message);
-    }
     const deadline = new Date(form.deadlineAt);
     if (Number.isNaN(deadline.getTime())) {
       const message = "Hal qilish muddatini to'g'ri kiriting";
@@ -483,12 +460,17 @@ export default function CreateTicketModal({
 
     try {
       const orderIssues = form.orderIssues
-        .map((item) => ({
-          orderId: item.orderId.trim().toUpperCase(),
-          category: item.category,
-          replacementOldValue: item.replacementOldValue.trim() || undefined,
-          replacementNewValue: item.replacementNewValue.trim() || undefined,
-        }))
+        .map((item) => {
+          const orderId = item.orderId.trim().toUpperCase();
+          return {
+            orderId,
+            category: item.category,
+            // O'ringa o'rin buyurtmada ushbu qatordagi DG qaytayotgan
+            // (eski) DG hisoblanadi. Uni operator yana qayta yozmaydi.
+            replacementOldValue: item.category === "REPLACEMENT" ? orderId || undefined : undefined,
+            replacementNewValue: item.replacementNewValue.trim() || undefined,
+          };
+        })
         .filter((item) => item.orderId);
       const payload = {
         customerId: form.customerId || undefined,
@@ -499,9 +481,10 @@ export default function CreateTicketModal({
         orderIssues,
         description: form.description,
         assignedTo: form.assignedTo || undefined,
-        collaboratorIds: form.collaboratorIds,
-        consultations: form.consultationQuestion.trim() && form.consultationRecipientIds.length
-          ? form.consultationRecipientIds.map((operatorId) => ({ operatorId, question: form.consultationQuestion.trim() }))
+        // Maslahat so'rovi uchun alohida xabar kerak emas: API ticketning
+        // muammo va izohini tanlangan maslahatchilarga yuboradi.
+        consultations: form.consultationRecipientIds.length
+          ? form.consultationRecipientIds.map((operatorId) => ({ operatorId }))
           : undefined,
         priority: form.priority,
         status: form.status,
@@ -687,13 +670,10 @@ export default function CreateTicketModal({
                     ) : null}
                   </div>
                   {issue.category === "REPLACEMENT" && (
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      <Input
-                        value={issue.replacementOldValue}
-                        onChange={(event) => setForm((current) => ({ ...current, orderIssues: current.orderIssues.map((item, itemIndex) => itemIndex === index ? { ...item, replacementOldValue: event.target.value } : item) }))}
-                        placeholder="Qaytayotgan mahsulot / eski DG"
-                        className="h-8 text-xs"
-                      />
+                    <div className="mt-2">
+                      <p className="mb-1.5 text-[11px] text-muted-foreground">
+                        Eski DG: <span className="font-medium text-foreground">{issue.orderId || "yuqoridagi DG"}</span> — avtomatik olinadi
+                      </p>
                       <Input
                         value={issue.replacementNewValue}
                         onChange={(event) => setForm((current) => ({ ...current, orderIssues: current.orderIssues.map((item, itemIndex) => itemIndex === index ? { ...item, replacementNewValue: event.target.value } : item) }))}
@@ -710,7 +690,7 @@ export default function CreateTicketModal({
               variant="outline"
               size="sm"
               className="h-8 rounded-lg text-xs"
-              onClick={() => setForm((current) => ({ ...current, orderIssues: [...current.orderIssues, { orderId: "", category: "DELIVERY_DELAY", replacementOldValue: "", replacementNewValue: "" }] }))}
+              onClick={() => setForm((current) => ({ ...current, orderIssues: [...current.orderIssues, { orderId: "", category: "DELIVERY_DELAY", replacementNewValue: "" }] }))}
             >
               <Plus className="size-3.5" /> Yana DG qo‘shish
             </Button>
@@ -812,11 +792,7 @@ export default function CreateTicketModal({
               <div className="relative">
                 <select
                   value={form.assignedTo}
-                  onChange={(event) => setForm((current) => ({
-                    ...current,
-                    assignedTo: event.target.value,
-                    collaboratorIds: current.collaboratorIds.filter((id) => id !== event.target.value),
-                  }))}
+                  onChange={(event) => setForm((current) => ({ ...current, assignedTo: event.target.value }))}
                   className="h-8 w-full appearance-none rounded-lg border border-input bg-background px-2.5 pr-8 text-sm text-foreground outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
                 >
                   {currentUserId && <option value={currentUserId}>Men — yaratuvchi (default)</option>}
@@ -828,64 +804,27 @@ export default function CreateTicketModal({
             </div>
           </div>
 
-          <div className="rounded-xl border bg-muted/15 p-3">
-            <div className="flex items-start gap-2">
-              <Users className="mt-0.5 size-4 text-brand-blue" />
-              <div className="min-w-0 flex-1">
-                <Label className="text-xs font-semibold">Yechimga jalb qilinganlar</Label>
-                <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">Bir nechta odamni belgilang — har biri ticketga kirib ishlashi va biriktirish notificationini oladi.</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {agents.filter((agent) => agent._id !== form.assignedTo && agent._id !== currentUserId).map((agent) => {
-                    const selected = form.collaboratorIds.includes(agent._id);
-                    return (
-                      <button
-                        key={agent._id}
-                        type="button"
-                        onClick={() => togglePerson("collaboratorIds", agent._id)}
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold transition ${selected ? "border-brand-blue bg-brand-blue text-white" : "bg-background text-muted-foreground hover:border-brand-blue/50 hover:text-foreground"}`}
-                        aria-pressed={selected}
-                      >
-                        {selected && <Check className="size-3" />}{agent.name}
-                      </button>
-                    );
-                  })}
-                  {!agents.filter((agent) => agent._id !== form.assignedTo && agent._id !== currentUserId).length && <span className="text-[11px] text-muted-foreground">Qo‘shimcha operator yo‘q.</span>}
-                </div>
-                {selectedParticipantIds.size > 1 && <p className="mt-2 text-[10px] font-medium text-brand-blue">{selectedParticipantIds.size} kishi ticket ustida ishlaydi.</p>}
+          <div className="border-t pt-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div>
+                <Label className="text-xs font-semibold">Maslahat so‘rash <span className="font-normal text-muted-foreground">(ixtiyoriy)</span></Label>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">Tanlanganlarga muammo va izoh yuboriladi.</p>
               </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-amber-300/70 bg-amber-500/5 p-3">
-            <div className="flex items-start gap-2">
-              <MessageSquareText className="mt-0.5 size-4 text-amber-600" />
-              <div className="min-w-0 flex-1">
-                <Label className="text-xs font-semibold">Yaratishda maslahat so‘rash (ixtiyoriy)</Label>
-                <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">Kimdan nima tekshirishi yoki qanday yordam berishini so‘rashingizni yozing. Ticket saqlanishi bilan ularga yuboriladi.</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {agents.filter((agent) => agent._id !== currentUserId).map((agent) => {
-                    const selected = form.consultationRecipientIds.includes(agent._id);
-                    return (
-                      <button
-                        key={agent._id}
-                        type="button"
-                        onClick={() => togglePerson("consultationRecipientIds", agent._id)}
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold transition ${selected ? "border-amber-500 bg-amber-500 text-black" : "bg-background text-muted-foreground hover:border-amber-500/70 hover:text-foreground"}`}
-                        aria-pressed={selected}
-                      >
-                        {selected && <Check className="size-3" />}{agent.name}
-                      </button>
-                    );
-                  })}
-                </div>
-                {form.consultationRecipientIds.length > 0 && (
-                  <Textarea
-                    value={form.consultationQuestion}
-                    onChange={(event) => setForm((current) => ({ ...current, consultationQuestion: event.target.value }))}
-                    placeholder="Masalan: Aka, bu DG uchun mahsulot sotib olinganmi? Tekshirib javob bering."
-                    className="mt-2 min-h-20 resize-none bg-background text-xs leading-5"
-                  />
-                )}
+              <div className="flex flex-wrap gap-1.5">
+                {agents.filter((agent) => agent._id !== currentUserId).map((agent) => {
+                  const selected = form.consultationRecipientIds.includes(agent._id);
+                  return (
+                    <button
+                      key={agent._id}
+                      type="button"
+                      onClick={() => toggleConsultationRecipient(agent._id)}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold transition ${selected ? "border-amber-500 bg-amber-500 text-black" : "bg-background text-muted-foreground hover:border-amber-500/70 hover:text-foreground"}`}
+                      aria-pressed={selected}
+                    >
+                      {selected && <Check className="size-3" />}{agent.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
