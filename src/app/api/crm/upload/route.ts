@@ -34,5 +34,8 @@ export async function POST(req: Request) {
   const ext = safeExtensions[file.type] || originalExtension;
   const name = `${randomUUID()}${ext}`; const dir = path.join(process.cwd(), "public", "uploads", "crm");
   await mkdir(dir, { recursive: true }); await writeFile(path.join(dir, name), Buffer.from(await file.arrayBuffer()));
-  return NextResponse.json({ url: `/uploads/crm/${name}`, name: file.name, mimeType: file.type, size: file.size });
+  // Runtime-created files must not be served from /public: Next.js indexes
+  // public assets only at startup in production. Route them through the
+  // authenticated dynamic endpoint instead.
+  return NextResponse.json({ url: `/api/crm/uploads/${name}`, name: file.name, mimeType: file.type, size: file.size });
 }

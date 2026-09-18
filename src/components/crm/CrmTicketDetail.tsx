@@ -78,6 +78,16 @@ function formatAttachmentSize(size?: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Old CRM messages stored files as public-folder URLs. Keep those records
+// readable through the authenticated media endpoint, without rewriting URLs
+// that already use it or point to an external provider.
+function resolveCrmAttachmentUrl(url: string) {
+  if (!url.startsWith("/uploads/crm/")) return url;
+
+  const key = url.slice("/uploads/crm/".length);
+  return key ? `/api/crm/uploads/${key}` : url;
+}
+
 async function copyText(value: string) {
   if (!value) return false;
 
@@ -743,7 +753,7 @@ export default function CrmTicketDetail({
                             isImageAttachment(attachment) ? (
                               <a
                                 key={attachment.url}
-                                href={attachment.url}
+                                href={resolveCrmAttachmentUrl(attachment.url)}
                                 target="_blank"
                                 rel="noreferrer"
                                 title={`${attachment.name} — ochish`}
@@ -755,7 +765,7 @@ export default function CrmTicketDetail({
                                 )}
                               >
                                 <img
-                                  src={attachment.url}
+                                  src={resolveCrmAttachmentUrl(attachment.url)}
                                   alt={attachment.name}
                                   loading="lazy"
                                   className="h-28 w-36 object-cover sm:h-32 sm:w-44"
@@ -772,7 +782,7 @@ export default function CrmTicketDetail({
                             ) : (
                               <a
                                 key={attachment.url}
-                                href={attachment.url}
+                                href={resolveCrmAttachmentUrl(attachment.url)}
                                 target="_blank"
                                 rel="noreferrer"
                                 className={cn(
@@ -891,14 +901,14 @@ export default function CrmTicketDetail({
                     >
                       {isImageAttachment(attachment) ? (
                         <a
-                          href={attachment.url}
+                          href={resolveCrmAttachmentUrl(attachment.url)}
                           target="_blank"
                           rel="noreferrer"
                           className="shrink-0 overflow-hidden rounded-md border bg-background"
                           title={`${attachment.name} — ochish`}
                         >
                           <img
-                            src={attachment.url}
+                            src={resolveCrmAttachmentUrl(attachment.url)}
                             alt={attachment.name}
                             className="h-10 w-10 object-cover"
                           />
